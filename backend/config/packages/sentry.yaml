@@ -1,0 +1,44 @@
+# Errors become Sentry issues; LoggerInterface records (info and above) go to Sentry Logs.
+# Everything is a no-op while SENTRY_DSN is empty.
+sentry:
+    dsn: '%env(default::SENTRY_DSN)%'
+    options:
+        environment: '%env(default:kernel.environment:SENTRY_ENVIRONMENT)%'
+        enable_logs: true
+        send_default_pii: false
+        # Expected client errors (401/403/404/422 ...) are answered as problem+json, not bugs.
+        ignore_exceptions:
+            - Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
+            - Symfony\Component\Security\Core\Exception\AuthenticationException
+            - Symfony\Component\Security\Core\Exception\AccessDeniedException
+
+services:
+    # Fills "{placeholders}" from the context, so log lines in Sentry read as sentences.
+    Monolog\Processor\PsrLogMessageProcessor:
+        tags: [monolog.processor]
+
+    Sentry\Monolog\LogsHandler:
+        arguments:
+            $logLevel: !php/enum Monolog\Level::Info
+
+when@dev:
+    monolog:
+        handlers:
+            sentry_logs:
+                type: service
+                id: Sentry\Monolog\LogsHandler
+                channels: ['!event', '!doctrine', '!deprecation']
+
+when@prod:
+    monolog:
+        handlers:
+            sentry_logs:
+                type: service
+                id: Sentry\Monolog\LogsHandler
+                channels: ['!event', '!doctrine', '!deprecation']
+
+when@test:
+    sentry:
+        # PHPUnit flags tests whose global error/exception handlers are left installed.
+        register_error_handler: false
+        register_error_listener: false

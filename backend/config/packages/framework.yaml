@@ -1,0 +1,24 @@
+# see https://symfony.com/doc/current/reference/configuration/framework.html
+framework:
+    secret: '%env(APP_SECRET)%'
+
+    # Stateless JSON API - no sessions.
+    session: false
+
+    serializer:
+        default_context:
+            # JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION
+            json_encode_options: 1344
+
+    http_client:
+        scoped_clients:
+            discord.client:
+                base_uri: 'https://discord.com/api/v10/'
+                timeout: 10
+
+    #esi: true
+    #fragments: true
+
+when@test:
+    framework:
+        test: true

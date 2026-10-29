@@ -1,0 +1,16 @@
+# Local configuration with real secrets (Discord token, OAuth secret, Sentry DSN)
+/.env
+/.env.local
+
+# Dependencies and build output (per-app ignores live in backend/, bot/, frontend/)
+node_modules/
+dist/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+*.log
+
+# TypeScript incremental build state
+*.tsbuildinfo

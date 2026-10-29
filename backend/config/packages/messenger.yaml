@@ -1,0 +1,25 @@
+framework:
+    messenger:
+        transports:
+            # Integration events for the Discord bot. Fanout exchange "warden_events" bound to
+            # the durable queue "discord_bot", which the bot consumes with amqplib.
+            discord_events:
+                dsn: '%env(MESSENGER_EVENTS_DSN)%'
+                serializer: App\Messenger\JsonEventSerializer
+                options:
+                    exchange:
+                        name: warden_events
+                        type: fanout
+                    queues:
+                        discord_bot: ~
+            sync: 'sync://'
+
+        routing:
+            App\Message\WardenSpawnedEvent: discord_events
+            App\Message\WardenExpiredEvent: discord_events
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                discord_events: 'in-memory://'

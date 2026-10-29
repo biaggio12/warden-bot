@@ -1,0 +1,97 @@
+import { sentryEnabled } from './instrument.js';
+import * as Sentry from '@sentry/node';
+import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
+import { ApiClient } from './api.js';
+import { loadConfig, type Config } from './config.js';
+import { EventConsumer } from './consumer.js';
+import { startHealthServer } from './health.js';
+import { InteractionHandler, commands } from './interactions.js';
+import { MonsterCatalog } from './monsterCatalog.js';
+import { Notifier } from './notifier.js';
+
+async function registerCommands(config: Config, applicationId: string): Promise<void> {
+  const rest = new REST().setToken(config.discordToken!);
+  const route = config.guildId
+    ? Routes.applicationGuildCommands(applicationId, config.guildId)
+    : Routes.applicationCommands(applicationId);
+  await rest.put(route, { body: commands });
+  console.info(`[discord] Registered ${commands.length} slash command(s) ${config.guildId ? `in guild ${config.guildId}` : 'globally'}`);
+}
+
+async function main(): Promise<void> {
+  const config = loadConfig();
+  console.info(`[sentry] ${sentryEnabled ? 'Errors and logs are sent to Sentry' : 'Disabled (SENTRY_DSN is empty)'}`);
+  const api = new ApiClient(config.apiBaseUrl, config.botApiToken);
+  const catalog = new MonsterCatalog(api);
+
+  let client: Client | null = null;
+  if (config.discordToken) {
+    client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  } else {
+    console.warn('[discord] DISCORD_TOKEN is empty - running in dry-run mode (events are only logged)');
+  }
+
+  const notifier = new Notifier(client, api, catalog, {
+    channelPrefix: config.channelPrefix,
+    directMessages: config.directMessages,
+    deleteExpired: config.deleteExpired,
+    pingCleanupMs: config.pingCleanupMs,
+  });
+  console.info(
+    `[notify] DMs ${config.directMessages ? 'enabled' : 'disabled'}; expired alerts are ${config.deleteExpired ? 'deleted' : 'kept with disabled buttons'}`,
+  );
+
+  if (client) {
+    const interactions = new InteractionHandler(api, catalog, config.frontendUrl, config.channelPrefix);
+
+    client.once(Events.ClientReady, (ready) => {
+      console.info(`[discord] Logged in as ${ready.user.tag} in ${ready.guilds.cache.size} guild(s)`);
+      registerCommands(config, config.applicationId ?? ready.user.id).catch((error) =>
+        console.error('[discord] Slash command registration failed:', error),
+      );
+      notifier.sweepChannels().catch((error) => console.error('[sweep] Failed:', error));
+    });
+    client.on(Events.InteractionCreate, (interaction) => void interactions.handle(interaction));
+    client.on(Events.Error, (error) => {
+      console.error('[discord] Client error:', error);
+      Sentry.captureException(error);
+    });
+  }
+
+  const consumer = new EventConsumer(config.amqpUrl, async (event) => {
+    if (event.event === 'warden.spawned') {
+      await notifier.onSpawned(event.data);
+    } else {
+      await notifier.onExpired(event.data);
+    }
+  });
+
+  const health = startHealthServer(config.healthPort, () => ({
+    amqp: consumer.connected,
+    discord: client ? client.isReady() : null,
+  }));
+
+  if (client) {
+    await client.login(config.discordToken!);
+  }
+  await consumer.start();
+
+  const shutdown = async (signal: string): Promise<void> => {
+    console.info(`[bot] ${signal} received, shutting down`);
+    notifier.dispose();
+    health.close();
+    await consumer.stop();
+    await client?.destroy();
+    await Sentry.close(2000);
+    process.exit(0);
+  };
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+}
+
+main().catch(async (error) => {
+  console.error('[bot] Fatal error:', error);
+  Sentry.captureException(error);
+  await Sentry.close(2000);
+  process.exit(1);
+});

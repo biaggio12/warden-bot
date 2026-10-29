@@ -1,0 +1,68 @@
+# Production overrides:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Images contain the built code; no source bind mounts, no published DB/broker ports.
+# Set real secrets (APP_SECRET, BOT_API_TOKEN, POSTGRES_PASSWORD, RABBITMQ_PASSWORD) in .env.
+
+x-php-prod: &php-prod
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile
+    target: prod
+  image: warden-tracker/php:prod
+  volumes: !reset []
+  restart: unless-stopped
+
+services:
+  php:
+    <<: *php-prod
+    environment:
+      APP_ENV: prod
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-prod}
+
+  worker:
+    <<: *php-prod
+    environment:
+      APP_ENV: prod
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-prod}
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    image: warden-tracker/nginx:prod
+    volumes: !reset []
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+        VITE_SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-${SENTRY_DSN:-}}
+        VITE_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-prod}
+    image: warden-tracker/frontend:prod
+    ports: !override
+      - '${FRONTEND_PORT:-5173}:80'
+    volumes: !reset []
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/']
+
+  bot:
+    build:
+      context: ./bot
+      target: prod
+    image: warden-tracker/bot:prod
+    volumes: !reset []
+    restart: unless-stopped
+    environment:
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-prod}
+
+  database:
+    ports: !reset []
+    restart: unless-stopped
+
+  rabbitmq:
+    ports: !reset []
+    restart: unless-stopped

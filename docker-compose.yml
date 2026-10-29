@@ -1,0 +1,183 @@
+# Development stack: `docker compose up -d` starts everything with hot reload.
+# Production overrides live in docker-compose.prod.yml.
+name: warden-tracker
+
+x-php: &php
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile
+    target: dev
+    args:
+      UID: ${UID:-1000}
+      GID: ${GID:-1000}
+  image: warden-tracker/php:dev
+  volumes:
+    - ./backend:/var/www/app
+  environment: &php-env
+    APP_ENV: ${APP_ENV:-dev}
+    APP_SECRET: ${APP_SECRET:-change-me-dev-secret}
+    DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@database:5432/${POSTGRES_DB:-warden}?serverVersion=17&charset=utf8
+    MESSENGER_EVENTS_DSN: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/%2f/warden_events
+    BOT_API_TOKEN: ${BOT_API_TOKEN:-dev-bot-token-change-me}
+    CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$}
+    TIBIA_WORLDS: ${TIBIA_WORLDS:-}
+    # "Log in with Discord": OAuth2 client of the same Discord application as the bot
+    DISCORD_CLIENT_ID: ${DISCORD_APPLICATION_ID:-}
+    DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+    DISCORD_OAUTH_REDIRECT_URI: ${FRONTEND_URL:-http://localhost:5173}/auth/discord/callback
+    # Sentry: errors + LoggerInterface logs (empty DSN = disabled)
+    SENTRY_DSN: ${SENTRY_DSN:-}
+    SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}
+  depends_on:
+    database:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+
+services:
+  php:
+    <<: *php
+    environment:
+      <<: *php-env
+      RUN_MIGRATIONS: '1'
+    healthcheck:
+      test: ['CMD', 'php-fpm-healthcheck']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+
+  # Runs the Symfony Scheduler (TTL expiry every 60 s) and publishes WardenExpiredEvent.
+  worker:
+    <<: *php
+    command: ['bin/console', 'messenger:consume', 'scheduler_default', '--time-limit=3600', '-vv']
+    restart: unless-stopped
+    depends_on:
+      php:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'pgrep -f "messenger:consume" > /dev/null']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  nginx:
+    image: nginx:1.29-alpine
+    ports:
+      - '${API_PORT:-8080}:80'
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./backend/public:/var/www/app/public:ro
+    depends_on:
+      php:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/api/v1/health']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    image: warden-tracker/frontend:dev
+    ports:
+      - '${FRONTEND_PORT:-5173}:5173'
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+      # Sentry: own project via SENTRY_DSN_FRONTEND, otherwise the backend's DSN
+      VITE_SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-${SENTRY_DSN:-}}
+      VITE_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:5173/']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+
+  bot:
+    build:
+      context: ./bot
+      target: dev
+    image: warden-tracker/bot:dev
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      API_BASE_URL: http://nginx/api/v1
+      BOT_API_TOKEN: ${BOT_API_TOKEN:-dev-bot-token-change-me}
+      AMQP_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      # Public alerts go to the text channel named <prefix><world>, e.g. #wardens-monza
+      CHANNEL_PREFIX: ${CHANNEL_PREFIX-wardens-}
+      # Targeted DMs to players who still need the monster (off = channel alerts only)
+      DISCORD_DM_ENABLED: ${DISCORD_DM_ENABLED:-false}
+      # Delete alerts when they expire (false = keep them with disabled buttons)
+      DISCORD_DELETE_EXPIRED: ${DISCORD_DELETE_EXPIRED:-true}
+      # Seconds the @mentions stay in an alert before it is edited down to the Warden's name
+      DISCORD_PING_CLEANUP_SECONDS: ${DISCORD_PING_CLEANUP_SECONDS:-1}
+      # Sentry: own project via SENTRY_DSN_BOT, otherwise the backend's DSN
+      SENTRY_DSN: ${SENTRY_DSN_BOT:-${SENTRY_DSN:-}}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}
+      # Polling instead of inotify: hosts with a low fs.inotify.max_user_instances
+      # otherwise crash `tsx watch` with EMFILE.
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+      CHOKIDAR_INTERVAL: '500'
+    volumes:
+      - ./bot:/app
+      - /app/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      nginx:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3001/health']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-warden}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+    ports:
+      - '${DATABASE_PORT:-5432}:5432'
+    volumes:
+      - database_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - '${RABBITMQ_UI_PORT:-15672}:15672'
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  database_data:
+  rabbitmq_data:

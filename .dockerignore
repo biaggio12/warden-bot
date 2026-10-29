@@ -1,0 +1,8 @@
+.env
+**/node_modules
+**/dist
+backend/vendor
+backend/var
+backend/.phpunit.cache
+backend/.env.local
+backend/.env.*.local
