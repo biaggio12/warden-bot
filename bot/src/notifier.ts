@@ -1,17 +1,25 @@
 import { ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Client, type Message, type TextChannel } from 'discord.js';
+import { AlertPresence } from './alertPresence.js';
 import type { ApiClient } from './api.js';
-import type { WardenExpired, WardenSpawned } from './events.js';
+import type { WardenExpired, WardenKilled, WardenSpawned } from './events.js';
 import {
   alertHeadline,
   allButtonsDisabled,
   buildDmNote,
+  bestiaryUrlOf,
   buildSpawnMessage,
   disabledButtonRows,
+  killNotice,
+  killedAlert,
+  killerOf,
   mentionChunks,
+  monsterNameOfAlert,
   parsePostedAlert,
+  presenceOf,
+  withPresence,
 } from './messages.js';
 import type { MonsterCatalog } from './monsterCatalog.js';
-import { SpawnRegistry, type SentMessage } from './spawnRegistry.js';
+import { SpawnRegistry, type CloseReason, type SentMessage } from './spawnRegistry.js';
 
 const DM_CONCURRENCY = 5;
 /** How far back the startup sweep looks in each alert channel. */
@@ -26,6 +34,10 @@ export interface NotifierOptions {
   deleteExpired: boolean;
   /** How long the mentions stay in the alert before it is edited down to the headline. */
   pingCleanupMs: number;
+  /** Web app address, for the alert's link to the bestiary page. */
+  frontendUrl?: string;
+  /** The presence lists the buttons keep (shared with the interaction handler). */
+  presence?: AlertPresence;
 }
 
 /**
@@ -34,6 +46,8 @@ export interface NotifierOptions {
  */
 export class Notifier {
   readonly registry: SpawnRegistry;
+  private readonly bestiaryUrl: string | undefined;
+  private readonly presence: AlertPresence;
   private readonly timers = new Set<NodeJS.Timeout>();
 
   constructor(
@@ -42,7 +56,9 @@ export class Notifier {
     private readonly catalog: MonsterCatalog,
     private readonly options: NotifierOptions,
   ) {
-    this.registry = new SpawnRegistry((spawn, messages) => this.expireMessages(spawn, messages));
+    this.bestiaryUrl = options.frontendUrl ? bestiaryUrlOf(options.frontendUrl) : undefined;
+    this.presence = options.presence ?? new AlertPresence();
+    this.registry = new SpawnRegistry((spawn, messages, reason) => this.expireMessages(spawn, messages, reason));
   }
 
   async onSpawned(spawn: WardenSpawned): Promise<void> {
@@ -64,9 +80,9 @@ export class Notifier {
       return;
     }
 
-    const channels = this.alertChannels(spawn.server_name);
+    const channels = await this.channelsFor(spawn);
     if (channels.length === 0) {
-      console.warn(`[notify] No #${this.channelName(spawn.server_name)} channel in any guild`);
+      console.warn(`[notify] No #${this.channelName(spawn.server_name)} channel for this report`);
     }
     for (const channel of channels) {
       await this.postAlert(channel, spawn, mentionIds);
@@ -76,7 +92,7 @@ export class Notifier {
       const note = buildDmNote(recipient.characters);
       try {
         const user = await this.client!.users.fetch(recipient.discord_user_id);
-        const message = await user.send(buildSpawnMessage(spawn, { note }));
+        const message = await user.send(buildSpawnMessage(spawn, { note, bestiaryUrl: this.bestiaryUrl }));
         this.registry.addMessage(spawn.spawn_id, { channelId: message.channelId, messageId: message.id, note });
       } catch (error) {
         // Usually the player has DMs from server members disabled.
@@ -88,6 +104,31 @@ export class Notifier {
       `[notify] ${spawn.monster.name} @ ${spawn.server_name}: ${channels.length} channel(s), ${mentionIds.length} player(s) pinged` +
         (this.options.directMessages ? ' and messaged' : ''),
     );
+  }
+
+  /**
+   * Where a report is announced. A /report goes to the server it was used in only. A web
+   * report goes to the servers the reporter is a member of; only when the reporter has no
+   * linked Discord account (nothing to tell servers apart by) does it go to every server.
+   */
+  private async channelsFor(spawn: WardenSpawned): Promise<TextChannel[]> {
+    const channels = this.alertChannels(spawn.server_name);
+    if (spawn.discord_guild_id) {
+      return channels.filter((channel) => channel.guild.id === spawn.discord_guild_id);
+    }
+    const reporter = spawn.reported_by_discord_user_id;
+    if (!reporter) {
+      return channels;
+    }
+    const memberships = await Promise.all(
+      channels.map((channel) =>
+        channel.guild.members
+          .fetch(reporter)
+          .then(() => true)
+          .catch(() => false),
+      ),
+    );
+    return channels.filter((_, i) => memberships[i]);
   }
 
   /**
@@ -115,7 +156,7 @@ export class Notifier {
 
     let alert: Message;
     try {
-      alert = await channel.send({ ...buildSpawnMessage(spawn, { onMyWay: true }), content: first, allowedMentions });
+      alert = await channel.send({ ...buildSpawnMessage(spawn, { onMyWay: true, bestiaryUrl: this.bestiaryUrl }), content: first, allowedMentions });
       this.registry.addMessage(spawn.spawn_id, { channelId: channel.id, messageId: alert.id });
     } catch (error) {
       console.error(`[notify] Could not post in #${channel.name} (${channel.guild.name}):`, error);
@@ -143,6 +184,92 @@ export class Notifier {
     const handled = await this.registry.expire(event.spawn_id);
     if (!handled) {
       console.info(`[notify] Spawn ${event.spawn_id} expired (not tracked or already handled)`);
+    }
+  }
+
+  /**
+   * A player reported the Warden dead. The alert is not removed yet: it is marked dead
+   * with who reported it, its buttons are disabled, and the players on its OMW / On site
+   * lists get a ping. It comes down when its original time runs out, as usual. Alerts
+   * the registry does not know (posted before a restart) are looked up in the history.
+   */
+  async onKilled(event: WardenKilled): Promise<void> {
+    if (!this.client?.user) {
+      console.info(`[dry-run] Spawn ${event.spawn_id} @ ${event.server_name} reported killed`);
+      return;
+    }
+    const tracked = this.registry.get(event.spawn_id) !== null;
+    if (tracked && !this.registry.markKilled(event.spawn_id)) {
+      return; // already over, or a redelivered event
+    }
+    const alerts = tracked ? await this.trackedAlerts(event.spawn_id) : await this.alertsInHistory(event);
+    for (const alert of alerts) {
+      await this.announceKill(alert, event);
+    }
+    console.info(`[notify] Spawn ${event.spawn_id} reported killed: ${alerts.length} alert(s) updated`);
+  }
+
+  /** Channel alerts only: DMs (they carry a note) have no presence lists to tell. */
+  private async trackedAlerts(spawnId: string): Promise<Message[]> {
+    const alerts: Message[] = [];
+    for (const { channelId, messageId, note } of this.registry.messagesOf(spawnId)) {
+      if (note) continue;
+      const channel = await this.client!.channels.fetch(channelId).catch(() => null);
+      const message = channel?.isTextBased() ? await channel.messages.fetch(messageId).catch(() => null) : null;
+      if (message) alerts.push(message);
+    }
+    return alerts;
+  }
+
+  private async alertsInHistory(event: WardenKilled): Promise<Message[]> {
+    const botId = this.client!.user!.id;
+    const alerts: Message[] = [];
+    for (const channel of this.alertChannels(event.server_name)) {
+      const messages = await channel.messages.fetch({ limit: SWEEP_MESSAGE_LIMIT }).catch(() => null);
+      for (const message of messages?.values() ?? []) {
+        // Disabled buttons: already expired or already marked dead.
+        if (message.author.id === botId && parsePostedAlert(message)?.spawnId === event.spawn_id && !allButtonsDisabled(message)) {
+          alerts.push(message);
+        }
+      }
+    }
+    return alerts;
+  }
+
+  private async announceKill(alert: Message, event: WardenKilled): Promise<void> {
+    const embed = alert.embeds[0];
+    if (!embed) return;
+    const killer = killerOf(event);
+    // The lists as the buttons last left them, with no edit of theirs still on the way.
+    const presence = (await this.presence.close(alert.id)) ?? presenceOf(embed.toJSON());
+
+    try {
+      const final = withPresence(embed.toJSON(), presence).toJSON();
+      await alert.edit({ embeds: [killedAlert(final, killer, new Date())], components: disabledButtonRows(alert) });
+    } catch (error) {
+      console.warn(`[notify] Could not mark alert ${alert.id} as killed:`, (error as Error).message);
+      return;
+    }
+
+    const waiting = [...presence.onMyWay, ...presence.onSite].filter((id) => id !== event.killed_by_discord_user_id);
+    if (waiting.length === 0) return;
+
+    const notices: Message[] = [];
+    const allowedMentions = { parse: [], users: waiting, repliedUser: false };
+    for (const content of killNotice(monsterNameOfAlert(alert), killer, waiting)) {
+      try {
+        notices.push(await alert.reply({ content, allowedMentions }));
+      } catch (error) {
+        console.warn(`[notify] Could not ping the players on the way:`, (error as Error).message);
+      }
+    }
+
+    // The notices go together with the alert.
+    const expiresAt = parsePostedAlert(alert)?.expiresAt;
+    if (this.options.deleteExpired && expiresAt) {
+      this.schedule(Math.max(0, expiresAt.getTime() - Date.now()), async () => {
+        await Promise.all(notices.map((notice) => ignoreUnknownMessage(notice.delete(), 'delete kill notice')));
+      });
     }
   }
 
@@ -204,23 +331,25 @@ export class Notifier {
     this.timers.add(timer);
   }
 
-  private async expireMessages(spawn: WardenSpawned, messages: SentMessage[]): Promise<void> {
+  private async expireMessages(spawn: WardenSpawned, messages: SentMessage[], reason: CloseReason): Promise<void> {
     if (!this.client) {
-      console.info(`[dry-run] ${spawn.monster.name} @ ${spawn.server_name} expired`);
+      console.info(`[dry-run] ${spawn.monster.name} @ ${spawn.server_name} ${reason}`);
       return;
     }
     await runLimited(messages, DM_CONCURRENCY, async ({ channelId, messageId, note }) => {
       try {
+        await this.presence.close(messageId);
         const channel = await this.client!.channels.fetch(channelId);
         if (!channel?.isSendable()) {
           return;
         }
         if (this.options.deleteExpired) {
           await channel.messages.delete(messageId);
-        } else {
+        } else if (reason === 'expired' || note) {
           // Channel alerts (no DM note) carry the presence buttons too.
-          await channel.messages.edit(messageId, buildSpawnMessage(spawn, { expired: true, note, onMyWay: !note }));
+          await channel.messages.edit(messageId, buildSpawnMessage(spawn, { expired: true, note, onMyWay: !note, bestiaryUrl: this.bestiaryUrl }));
         }
+        // A killed channel alert already shows its final state; kept as it is.
       } catch (error) {
         if (!isUnknownMessage(error)) {
           console.warn(`[notify] Could not retire message ${messageId}:`, (error as Error).message);
@@ -232,6 +361,7 @@ export class Notifier {
   /** Expires an alert we only know from the channel history (see sweepChannels). */
   private async retire(message: Message): Promise<void> {
     try {
+      await this.presence.close(message.id);
       if (this.options.deleteExpired) {
         await message.delete();
       } else {

@@ -6,13 +6,17 @@ use App\Dto\CreateWardenSpawnRequest;
 use App\Entity\User;
 use App\Entity\WardenSpawn;
 use App\Http\Json;
+use App\Http\Problem;
+use App\Message\WardenKilledEvent;
 use App\Message\WardenSpawnedEvent;
 use App\Repository\MonsterRepository;
 use App\Repository\WardenSpawnRepository;
 use App\Service\CityRegistry;
+use App\Service\ReporterInfo;
 use App\Service\WorldRegistry;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
@@ -27,6 +31,7 @@ final class WardenSpawnController extends AbstractController
     public function __construct(
         private readonly WardenSpawnRepository $spawns,
         private readonly ClockInterface $clock,
+        private readonly ReporterInfo $reporters,
     ) {
     }
 
@@ -34,7 +39,10 @@ final class WardenSpawnController extends AbstractController
     public function list(#[MapQueryParameter('server_name')] ?string $serverName = null): JsonResponse
     {
         return $this->json([
-            'warden_spawns' => array_map(Json::wardenSpawn(...), $this->spawns->findActive($serverName, $this->clock->now())),
+            'warden_spawns' => array_map(
+                fn (WardenSpawn $spawn): array => Json::wardenSpawn($spawn, $this->reporters->of($spawn)),
+                $this->spawns->findActive($serverName, $this->clock->now()),
+            ),
         ]);
     }
 
@@ -57,13 +65,45 @@ final class WardenSpawnController extends AbstractController
             createdAt: $this->clock->now(),
             city: null === $payload->city || '' === $payload->city ? null : $cities->canonicalize($payload->city),
             additionalInfo: $payload->additionalInfo,
+            discordGuildId: $payload->discordGuildId,
         );
 
         $em->persist($spawn);
         $em->flush();
 
-        $bus->dispatch(WardenSpawnedEvent::fromSpawn($spawn));
+        $reportedBy = $this->reporters->of($spawn);
+        $bus->dispatch(WardenSpawnedEvent::fromSpawn($spawn, $reportedBy));
 
-        return $this->json(Json::wardenSpawn($spawn), 201);
+        return $this->json(Json::wardenSpawn($spawn, $reportedBy), 201);
+    }
+
+    /**
+     * The Warden was killed before its time ran out: closes the report for everyone
+     * and the bot takes the alert down. Any player may do it, like reporting.
+     */
+    #[Route('/{id}/kill', name: 'api_warden_spawns_kill', methods: ['POST'])]
+    public function kill(
+        string $id,
+        #[CurrentUser] User $user,
+        EntityManagerInterface $em,
+        MessageBusInterface $bus,
+        LoggerInterface $logger,
+    ): JsonResponse {
+        $spawn = $this->spawns->findByIdString($id) ?? throw $this->createNotFoundException('Report not found.');
+        if (!$spawn->isActive($this->clock->now())) {
+            return Problem::response(409, 'This report is no longer active.');
+        }
+
+        $spawn->markKilled();
+        $em->flush();
+
+        $bus->dispatch(WardenKilledEvent::fromSpawn($spawn, $user));
+        $logger->info('{user} closed the {monster} report on {world} as killed.', [
+            'user' => $user->getDisplayName(),
+            'monster' => $spawn->getMonster()->getName(),
+            'world' => $spawn->getServerName(),
+        ]);
+
+        return $this->json(Json::wardenSpawn($spawn, $this->reporters->of($spawn)));
     }
 }

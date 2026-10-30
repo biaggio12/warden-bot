@@ -17,6 +17,9 @@ import type { WardenSpawned } from './events.js';
 
 const KILL_BUTTON_PREFIX = 'wk';
 const KILL_SELECT_PREFIX = 'wks';
+/** [Gone] asks for confirmation; the confirm button then closes the report for everyone. */
+const GONE_BUTTON_PREFIX = 'gone';
+const GONE_CONFIRM_PREFIX = 'gone!';
 /**
  * Who is heading to a Warden and who is already there. Each list lives in an embed field
  * of the alert itself; a player is on at most one of them.
@@ -55,6 +58,19 @@ export function presenceButtonId(list: PresenceList, spawnId: string): string {
   return [PRESENCE[list].prefix, spawnId].join(SEPARATOR);
 }
 
+export function goneButtonId(spawnId: string, confirm = false): string {
+  return [confirm ? GONE_CONFIRM_PREFIX : GONE_BUTTON_PREFIX, spawnId].join(SEPARATOR);
+}
+
+/** The spawn a [Gone] button (or its confirmation) belongs to, or null for other buttons. */
+export function parseGoneCustomId(customId: string): { spawnId: string; confirm: boolean } | null {
+  const [prefix, spawnId] = customId.split(SEPARATOR);
+  if (!spawnId || (prefix !== GONE_BUTTON_PREFIX && prefix !== GONE_CONFIRM_PREFIX)) {
+    return null;
+  }
+  return { spawnId, confirm: prefix === GONE_CONFIRM_PREFIX };
+}
+
 /** Which presence list a button toggles, or null for other buttons. */
 export function presenceListOf(customId: string): PresenceList | null {
   return PRESENCE_ORDER.find((list) => customId.startsWith(PRESENCE[list].prefix + SEPARATOR)) ?? null;
@@ -80,7 +96,9 @@ export interface SpawnMessageOptions {
   expired?: boolean;
   /** Extra line for DMs, e.g. which of the player's characters still need the monster. */
   note?: string;
-  /** Adds the [OMW] and [On site] buttons; only channel alerts have shared presence lists. */
+  /** Link button to the web app's bestiary, where players update which Wardens they have. */
+  bestiaryUrl?: string;
+  /** Adds the [OMW], [On site] and [Gone] buttons; only channel alerts have shared presence lists. */
   onMyWay?: boolean;
 }
 
@@ -102,6 +120,7 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
         value: expired ? time(expiresAt, TimestampStyles.ShortTime) : `${time(expiresAt, TimestampStyles.RelativeTime)} (${time(expiresAt, TimestampStyles.ShortTime)})`,
         inline: true,
       },
+      { name: 'Reported by', value: reporterOf(spawn), inline: true },
       {
         name: 'Location',
         value: escapeMarkdown(spawn.city ? `${spawn.city} — ${spawn.location_description}` : spawn.location_description),
@@ -144,10 +163,26 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
         .setEmoji('📍')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(expired),
+      new ButtonBuilder()
+        .setCustomId(goneButtonId(spawn.spawn_id))
+        .setLabel('Gone')
+        .setEmoji('💀')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(expired),
     );
   }
 
+  if (options.bestiaryUrl) {
+    // A link stays usable after the report is over: updating the bestiary is never too late.
+    row.addComponents(new ButtonBuilder().setURL(options.bestiaryUrl).setLabel('My bestiary').setEmoji('📖').setStyle(ButtonStyle.Link));
+  }
+
   return { embeds: [embed], components: [row] };
+}
+
+/** The web app page where players mark the monsters their characters have. */
+export function bestiaryUrlOf(frontendUrl: string): string {
+  return `${frontendUrl.replace(/\/+$/, '')}/#bestiary`;
 }
 
 type EmbedLike = Pick<APIEmbed, 'fields'>;
@@ -196,7 +231,7 @@ export function isInPresence(presence: Presence, userId: string): boolean {
 /**
  * The alert's embed with its presence fields rewritten (empty lists are removed).
  * Mentions inside embeds show names but never ping anyone. Past ~45 players a list
- * shows the overflow as "+N", and those players drop off on the next change.
+ * shows the overflow as "+N", while the bot keeps the full lists (see AlertPresence).
  */
 export function withPresence(embed: APIEmbed, presence: Presence): EmbedBuilder {
   const fields = (embed.fields ?? []).filter((f) => presenceListOfField(f.name) === null);
@@ -227,6 +262,11 @@ function buttonsOf(message: PostedMessage) {
   );
 }
 
+/** Link buttons (the bestiary link) only open a page, so they are never disabled. */
+function isLink(button: { toJSON(): unknown }): boolean {
+  return (button.toJSON() as { style?: number }).style === ButtonStyle.Link;
+}
+
 /**
  * Reads back which spawn a message we posted belongs to and when it expires
  * (from the <t:unix> timestamp in its embed). null for anything that is not an alert.
@@ -242,7 +282,7 @@ export function parsePostedAlert(message: PostedMessage): { spawnId: string; exp
 }
 
 export function allButtonsDisabled(message: PostedMessage): boolean {
-  const buttons = buttonsOf(message);
+  const buttons = buttonsOf(message).filter((button) => !isLink(button));
   return buttons.length > 0 && buttons.every((button) => button.disabled);
 }
 
@@ -254,7 +294,7 @@ export function disabledButtonRows(message: PostedMessage): ActionRowBuilder<But
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             row.components
               .filter((c) => c.type === ComponentType.Button)
-              .map((button) => ButtonBuilder.from(button.toJSON()).setDisabled(true)),
+              .map((button) => ButtonBuilder.from(button.toJSON()).setDisabled(!isLink(button))),
           ),
         ]
       : [],
@@ -291,6 +331,61 @@ export function buildDmNote(characters: CharacterRef[]): string {
   return characters.length === 1
     ? `Your character ${names} does not have this monster in the bestiary yet.`
     : `Your characters without this monster: ${names}.`;
+}
+
+/** The ephemeral "are you sure" shown after [Gone]: closing a report affects everyone. */
+export function goneConfirmation(spawnId: string, monsterName: string | null): BaseMessageOptions {
+  const name = monsterName ? `**${escapeMarkdown(monsterName)}**` : 'this Warden';
+  const confirm = new ButtonBuilder().setCustomId(goneButtonId(spawnId, true)).setLabel("Yes, it's dead").setStyle(ButtonStyle.Danger);
+  return {
+    content: `Mark ${name} as dead for everyone? Players on the way will be told. Only do this if the Warden has been killed.`,
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(confirm)],
+  };
+}
+
+/**
+ * Who reported the Warden: their Discord mention (shows the name, pings nobody inside an
+ * embed) and their characters on that world, the names they go by in game.
+ */
+export function reporterOf(spawn: WardenSpawned): string {
+  const characters = spawn.reported_by_characters.map((name) => escapeMarkdown(name)).join(', ');
+  const who = spawn.reported_by_discord_user_id
+    ? `<@${spawn.reported_by_discord_user_id}>`
+    : spawn.reported_by_name
+      ? escapeMarkdown(spawn.reported_by_name)
+      : null;
+  if (who && characters) return `${who} (${characters})`;
+  return who ?? (characters || 'a player');
+}
+
+/** Who closed a report: a Discord mention (shows their name, pings nobody inside an embed) or their username. */
+export function killerOf(event: { killed_by_discord_user_id: string | null; killed_by_name: string | null }): string {
+  if (event.killed_by_discord_user_id) return `<@${event.killed_by_discord_user_id}>`;
+  return event.killed_by_name ? `**${escapeMarkdown(event.killed_by_name)}**` : 'a player on the web app';
+}
+
+/**
+ * The alert after [Gone]: marked dead with who reported it, buttons disabled, and the
+ * presence lists left as they were, so everyone sees who was on the way. It stays up
+ * until the report's original time runs out.
+ */
+export function killedAlert(embed: APIEmbed, killer: string, at: Date): EmbedBuilder {
+  return EmbedBuilder.from(embed)
+    .setTitle((embed.title ?? '').replace(/^\S+\s+/, '💀 '))
+    .setColor(0xb91c1c)
+    .setDescription(`**Killed**, reported by ${killer} ${time(at, TimestampStyles.RelativeTime)}. No need to come.`)
+    .setFooter({ text: 'The Warden was killed' });
+}
+
+/** The ping to players on the way or on site: edits do not notify, a new message does. */
+export function killNotice(monsterName: string | null, killer: string, userIds: string[]): string[] {
+  const name = monsterName ? `**${escapeMarkdown(monsterName)}**` : 'The Warden';
+  return mentionChunks(`💀 ${name} is dead, reported by ${killer}. No need to come:`, userIds);
+}
+
+/** Monster name from an alert's embed title (an emoji, a space, the name). */
+export function monsterNameOfAlert(message: PostedMessage): string | null {
+  return message.embeds[0]?.title?.replace(/^\S+\s+/, '') || null;
 }
 
 export function buildCharacterSelect(target: KillTarget, characters: CharacterRef[]): ActionRowBuilder<StringSelectMenuBuilder> {

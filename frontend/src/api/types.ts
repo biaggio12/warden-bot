@@ -15,11 +15,13 @@ export interface Character {
 
 export interface WardenSpawn {
   id: string;
-  monster: { id: number; name: string };
+  monster: { id: number; name: string; image_url?: string | null };
   server_name: string;
   city: string | null;
   location_description: string;
   additional_info: string | null;
+  /** The reporter's characters on that world and Discord username; never their e-mail. */
+  reported_by?: { characters: string[]; discord_name: string | null };
   status: 'ACTIVE' | 'KILLED' | 'EXPIRED';
   created_at: string;
   expires_at: string;
@@ -54,6 +56,8 @@ export interface Stats {
   top_monsters: CountRow[];
   top_cities: CountRow[];
   leaderboard: { rank: number; player: string; reports: number; is_you: boolean }[];
+  /** Characters with the most monsters marked in the bestiary, all time. */
+  bestiary_leaderboard: { rank: number; character: string; server_name: string; killed: number; total: number; is_you: boolean }[];
   you: {
     reports: number;
     rank: number | null;

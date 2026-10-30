@@ -21,12 +21,20 @@ final readonly class WardenSpawnedEvent
         public ?string $city,
         public ?string $additionalInfo,
         public string $reportedByDiscordUserId,
+        /** @var list<string> the reporter's characters on that world */
+        public array $reportedByCharacters,
+        public ?string $reportedByName,
+        /** Post the alert in this Discord server only; null = decided by the bot. */
+        public ?string $discordGuildId,
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $expiresAt,
     ) {
     }
 
-    public static function fromSpawn(WardenSpawn $spawn): self
+    /**
+     * @param array{characters: list<string>, discord_name: ?string} $reportedBy see ReporterInfo
+     */
+    public static function fromSpawn(WardenSpawn $spawn, array $reportedBy): self
     {
         $monster = $spawn->getMonster();
 
@@ -41,6 +49,9 @@ final readonly class WardenSpawnedEvent
             city: $spawn->getCity(),
             additionalInfo: $spawn->getAdditionalInfo(),
             reportedByDiscordUserId: (string) $spawn->getReportedBy()->getDiscordUserId(),
+            reportedByCharacters: $reportedBy['characters'],
+            reportedByName: $reportedBy['discord_name'],
+            discordGuildId: $spawn->getDiscordGuildId(),
             createdAt: $spawn->getCreatedAt(),
             expiresAt: $spawn->getExpiresAt(),
         );

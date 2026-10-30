@@ -2,7 +2,7 @@ import { MessageFlags, type APIEmbed } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError, type ApiClient, type CharacterRef } from '../src/api.js';
 import { InteractionHandler } from '../src/interactions.js';
-import { buildSpawnMessage, killButtonId, killSelectId, presenceButtonId, presenceOf, withPresence, type PresenceList } from '../src/messages.js';
+import { buildSpawnMessage, goneButtonId, killButtonId, killSelectId, presenceButtonId, presenceOf, withPresence, type PresenceList } from '../src/messages.js';
 import type { MonsterCatalog } from '../src/monsterCatalog.js';
 import { spawnFixture } from './fixtures.js';
 
@@ -84,7 +84,7 @@ describe('[Killed] button', () => {
 function alertMessage(onMyWay: string[], onSite: string[] = []) {
   const base = (buildSpawnMessage(spawnFixture(), { onMyWay: true }).embeds![0] as { toJSON(): APIEmbed }).toJSON();
   const embed = withPresence(base, { onMyWay, onSite }).toJSON();
-  return { id: 'alert-1', embeds: [{ toJSON: () => embed }], edit: vi.fn().mockResolvedValue(undefined) };
+  return { id: 'alert-1', embeds: [{ title: embed.title, toJSON: () => embed }], edit: vi.fn().mockResolvedValue(undefined) };
 }
 
 function presenceIn(payload: { embeds: { toJSON(): APIEmbed }[] }) {
@@ -92,7 +92,7 @@ function presenceIn(payload: { embeds: { toJSON(): APIEmbed }[] }) {
 }
 
 describe('presence buttons', () => {
-  function click(list: PresenceList, message: ReturnType<typeof alertMessage>, userId: string) {
+  function click(list: PresenceList, message: ReturnType<typeof alertMessage>, userId: string, editReply = vi.fn().mockResolvedValue(undefined)) {
     return {
       customId: presenceButtonId(list, 'spawn-1'),
       user: { id: userId },
@@ -102,8 +102,8 @@ describe('presence buttons', () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isRepliable: () => true,
-      update: vi.fn().mockResolvedValue(undefined),
       deferUpdate: vi.fn().mockResolvedValue(undefined),
+      editReply,
     };
   }
 
@@ -112,11 +112,12 @@ describe('presence buttons', () => {
 
     const join = click('onMyWay', alertMessage(['111']), '999000');
     await handler.handle(join as never);
-    expect(presenceIn(join.update.mock.calls[0]![0])).toEqual({ onMyWay: ['111', '999000'], onSite: [] });
+    expect(join.deferUpdate).toHaveBeenCalled();
+    expect(presenceIn(join.editReply.mock.calls[0]![0])).toEqual({ onMyWay: ['111', '999000'], onSite: [] });
 
     const leave = click('onMyWay', alertMessage(['111', '999000']), '999000');
     await handler.handle(leave as never);
-    expect(presenceIn(leave.update.mock.calls[0]![0])).toEqual({ onMyWay: ['111'], onSite: [] });
+    expect(presenceIn(leave.editReply.mock.calls[0]![0])).toEqual({ onMyWay: ['111'], onSite: [] });
   });
 
   it('[On site] moves the player from "On my way" to "On site"', async () => {
@@ -125,7 +126,27 @@ describe('presence buttons', () => {
     const arrive = click('onSite', alertMessage(['111', '999000']), '999000');
     await handler.handle(arrive as never);
 
-    expect(presenceIn(arrive.update.mock.calls[0]![0])).toEqual({ onMyWay: ['111'], onSite: ['999000'] });
+    expect(presenceIn(arrive.editReply.mock.calls[0]![0])).toEqual({ onMyWay: ['111'], onSite: ['999000'] });
+  });
+
+  it('keeps every player when many click at once on the same old copy of the alert', async () => {
+    const { handler } = setup([]);
+    let finishEdit!: () => void;
+    const slowEdit = vi.fn(() => new Promise<void>((resolve) => (finishEdit = resolve)));
+    const edits = vi.fn().mockResolvedValue(undefined);
+    const stale = alertMessage([]);
+
+    const first = handler.handle(click('onMyWay', stale, '1', slowEdit) as never);
+    await vi.waitFor(() => expect(slowEdit).toHaveBeenCalled());
+    // While that edit is in flight, 20 more players click the same (stale) message.
+    const rest = Array.from({ length: 20 }, (_, i) => handler.handle(click('onMyWay', stale, String(i + 2), edits) as never));
+    finishEdit();
+    await Promise.all([first, ...rest]);
+
+    // One edit for the first click, one more carrying all 20 others.
+    expect(edits).toHaveBeenCalledTimes(1);
+    const final = presenceIn(edits.mock.calls[0]![0]);
+    expect(final.onMyWay).toEqual(Array.from({ length: 21 }, (_, i) => String(i + 1)));
   });
 });
 
@@ -198,5 +219,60 @@ describe('[Killed] takes the player off the presence lists', () => {
     await handler.handle(interaction as never);
 
     expect(alert.edit).not.toHaveBeenCalled();
+  });
+});
+
+describe('[Gone] button', () => {
+  function click(customId: string) {
+    const api = { killSpawn: vi.fn().mockResolvedValue(undefined) } as unknown as ApiClient & { killSpawn: ReturnType<typeof vi.fn> };
+    const handler = new InteractionHandler(api, {} as MonsterCatalog, 'http://panel');
+    const interaction = {
+      customId,
+      user: { id: '999000' },
+      message: alertMessage([]),
+      deferred: false,
+      replied: false,
+      isAutocomplete: () => false,
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      isStringSelectMenu: () => false,
+      isRepliable: () => true,
+      reply: vi.fn().mockResolvedValue(undefined),
+      deferUpdate: vi.fn(async function (this: { deferred: boolean }) {
+        this.deferred = true;
+      }),
+      editReply: vi.fn().mockResolvedValue(undefined),
+    };
+    return { api, handler, interaction };
+  }
+
+  it('asks for confirmation before closing the report', async () => {
+    const { api, handler, interaction } = click(goneButtonId('spawn-1'));
+
+    await handler.handle(interaction as never);
+
+    expect(api.killSpawn).not.toHaveBeenCalled();
+    const reply = interaction.reply.mock.calls[0]![0];
+    expect(reply.flags).toBe(MessageFlags.Ephemeral);
+    expect(reply.content).toContain('**Dragon Warden**');
+    expect(reply.components[0].toJSON().components[0].custom_id).toBe(goneButtonId('spawn-1', true));
+  });
+
+  it('closes the report once confirmed', async () => {
+    const { api, handler, interaction } = click(goneButtonId('spawn-1', true));
+
+    await handler.handle(interaction as never);
+
+    expect(api.killSpawn).toHaveBeenCalledWith('999000', 'spawn-1');
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.objectContaining({ components: [] }));
+  });
+
+  it('explains when the report is already closed', async () => {
+    const { api, handler, interaction } = click(goneButtonId('spawn-1', true));
+    api.killSpawn.mockRejectedValue(new ApiError(409, { detail: 'This report is no longer active.' }));
+
+    await handler.handle(interaction as never);
+
+    expect(interaction.editReply).toHaveBeenCalledWith({ content: '⚠️ This report is no longer active.', components: [] });
   });
 });

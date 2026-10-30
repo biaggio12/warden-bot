@@ -9,17 +9,19 @@ import {
   type StringSelectMenuInteraction,
 } from 'discord.js';
 import * as Sentry from '@sentry/node';
+import { AlertPresence } from './alertPresence.js';
 import { ApiError, type ApiClient } from './api.js';
 import {
   buildCharacterSelect,
+  goneConfirmation,
   isInPresence,
   killConfirmation,
   leavePresence,
+  monsterNameOfAlert,
+  parseGoneCustomId,
   parseKillCustomId,
   presenceListOf,
-  presenceOf,
   togglePresence,
-  withPresence,
   type PresenceList,
   type KillTarget,
 } from './messages.js';
@@ -48,6 +50,7 @@ export class InteractionHandler {
     private readonly catalog: MonsterCatalog,
     private readonly frontendUrl: string,
     channelPrefix = 'wardens-',
+    private readonly presence = new AlertPresence(),
   ) {
     this.report = new ReportCommand(api, catalog, channelPrefix);
   }
@@ -64,6 +67,8 @@ export class InteractionHandler {
         await this.handleLink(interaction);
       } else if (interaction.isChatInputCommand() && interaction.commandName === 'report') {
         await this.report.execute(interaction);
+      } else if (interaction.isButton() && parseGoneCustomId(interaction.customId)) {
+        await this.handleGone(interaction, parseGoneCustomId(interaction.customId)!);
       } else if (interaction.isButton() && presenceListOf(interaction.customId)) {
         await this.handlePresence(interaction, presenceListOf(interaction.customId)!);
       } else if (interaction.isButton()) {
@@ -104,34 +109,51 @@ export class InteractionHandler {
   /**
    * [OMW] / [On site] put the player on that list of the alert (and off the other one);
    * clicking the same button again takes them off. The lists are stored in the alert
-   * itself, so they survive restarts and each channel keeps its own.
+   * itself, so they survive restarts and each channel keeps its own. The click is
+   * acknowledged at once; the edit goes through AlertPresence, so simultaneous clicks
+   * all end up on the list.
    */
   private async handlePresence(interaction: ButtonInteraction, list: PresenceList): Promise<void> {
+    await interaction.deferUpdate();
     const embed = interaction.message.embeds[0];
     if (!embed) {
-      await interaction.deferUpdate();
       return;
     }
-    const next = togglePresence(presenceOf(embed.toJSON()), list, interaction.user.id);
+    await this.presence.change(
+      interaction.message.id,
+      embed.toJSON(),
+      (presence) => togglePresence(presence, list, interaction.user.id),
+      (next) => interaction.editReply({ embeds: [next] }),
+    );
+  }
 
-    await interaction.update({ embeds: [withPresence(embed.toJSON(), next)] });
+  /**
+   * [Gone] on the alert asks first (closing a report affects everyone); the confirm
+   * button in that ephemeral reply closes it. The backend then publishes warden.killed
+   * and the notifier marks the alert dead and pings the players on the way.
+   */
+  private async handleGone(interaction: ButtonInteraction, gone: { spawnId: string; confirm: boolean }): Promise<void> {
+    if (!gone.confirm) {
+      await interaction.reply({ ...goneConfirmation(gone.spawnId, monsterNameOfAlert(interaction.message)), flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.deferUpdate();
+    await this.api.killSpawn(interaction.user.id, gone.spawnId);
+    await interaction.editReply({ content: '💀 Marked as dead. Players on the way have been told.', components: [] });
   }
 
   /** After a successful kill the player is neither on the way nor waiting on site. */
   private async leavePresenceLists(alert: Message | null, userId: string): Promise<void> {
     const embed = alert?.embeds[0];
-    if (!alert || !embed) {
+    if (!alert || !embed || !isInPresence(this.presence.of(alert.id, embed.toJSON()), userId)) {
       return;
     }
-    const presence = presenceOf(embed.toJSON());
-    if (!isInPresence(presence, userId)) {
-      return;
-    }
-    try {
-      await alert.edit({ embeds: [withPresence(embed.toJSON(), leavePresence(presence, userId))] });
-    } catch (error) {
-      console.warn('[interaction] Could not update the presence lists:', (error as Error).message);
-    }
+    await this.presence.change(
+      alert.id,
+      embed.toJSON(),
+      (presence) => leavePresence(presence, userId),
+      (next) => alert.edit({ embeds: [next] }),
+    );
   }
 
   /** Scenario A: one character on that world -> mark immediately. Scenario B: ask which one. */

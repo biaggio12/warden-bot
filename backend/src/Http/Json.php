@@ -59,20 +59,24 @@ final class Json
     }
 
     /**
+     * @param array{characters: list<string>, discord_name: ?string} $reportedBy see ReporterInfo
+     *
      * @return array<string, mixed>
      */
-    public static function wardenSpawn(WardenSpawn $spawn): array
+    public static function wardenSpawn(WardenSpawn $spawn, array $reportedBy): array
     {
         return [
             'id' => $spawn->getId()->toRfc4122(),
             'monster' => [
                 'id' => $spawn->getMonster()->getId(),
                 'name' => $spawn->getMonster()->getName(),
+                'image_url' => $spawn->getMonster()->getImageUrl(),
             ],
             'server_name' => $spawn->getServerName(),
             'city' => $spawn->getCity(),
             'location_description' => $spawn->getLocationDescription(),
             'additional_info' => $spawn->getAdditionalInfo(),
+            'reported_by' => $reportedBy,
             'status' => $spawn->getStatus()->value,
             'created_at' => self::date($spawn->getCreatedAt()),
             'expires_at' => self::date($spawn->getExpiresAt()),

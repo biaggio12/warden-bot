@@ -50,6 +50,19 @@ describe('parseEvent', () => {
     expect(event).toMatchObject({ event: 'warden.expired', data: { spawn_id: 'abc', monster_id: 142 } });
   });
 
+  it('parses warden.killed', () => {
+    const event = parseEvent(JSON.stringify({
+      event: 'warden.killed',
+      data: { spawn_id: 'abc', monster_id: 142, server_name: 'Monza', killed_by_discord_user_id: null, killed_by_name: 'lukasz' },
+    }));
+
+    expect(event).toEqual({
+      event: 'warden.killed',
+      occurred_at: expect.any(String),
+      data: { spawn_id: 'abc', monster_id: 142, server_name: 'Monza', killed_by_discord_user_id: null, killed_by_name: 'lukasz' },
+    });
+  });
+
   it.each([
     ['not json', '{'],
     ['unknown event', JSON.stringify({ event: 'other', data: {} })],

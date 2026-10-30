@@ -1,9 +1,10 @@
 COMPOSE      = docker compose
 COMPOSE_PROD = docker compose -f docker-compose.yml -f docker-compose.prod.yml
+COMPOSE_PUBLIC = $(COMPOSE_PROD) -f docker-compose.public.yml
 PHP          = $(COMPOSE) exec php
 
 .DEFAULT_GOAL := help
-.PHONY: help init up down restart logs ps fixtures migrate test test-backend test-bot test-frontend shell prod-up prod-down
+.PHONY: help init up down restart logs ps fixtures migrate test test-backend test-bot test-frontend shell prod-up prod-down public-up public-down
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -54,3 +55,9 @@ prod-up: ## Build and start the production stack
 
 prod-down: ## Stop the production stack
 	$(COMPOSE_PROD) down
+
+public-up: ## Production build served publicly through the openGym Caddy (see docker-compose.public.yml)
+	$(COMPOSE_PUBLIC) up -d --build --wait
+
+public-down: ## Stop the public stack
+	$(COMPOSE_PUBLIC) down

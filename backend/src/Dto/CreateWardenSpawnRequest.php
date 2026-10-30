@@ -2,6 +2,7 @@
 
 namespace App\Dto;
 
+use App\Entity\WardenSpawn;
 use App\Service\PlainTextSanitizer;
 use App\Validator\ActiveWorld;
 use App\Validator\MonsterExists;
@@ -37,13 +38,19 @@ final readonly class CreateWardenSpawnRequest
         ?string $locationDescription = null,
 
         #[SerializedName('ttl_minutes')]
-        #[Assert\Range(min: 3, max: 30)]
-        public int $ttlMinutes = 7,
+        // A Warden disappears on its own 10 minutes after it shows up.
+        #[Assert\Range(min: 1, max: WardenSpawn::MAX_TTL_MINUTES)]
+        public int $ttlMinutes = WardenSpawn::DEFAULT_TTL_MINUTES,
 
         #[ValidCity]
         public ?string $city = null,
 
         ?string $additionalInfo = null,
+
+        /** Set by the bot for /report: the Discord server the alert belongs to. */
+        #[SerializedName('discord_guild_id')]
+        #[Assert\Regex('/^\d{17,20}$/', message: 'Not a Discord server id.')]
+        public ?string $discordGuildId = null,
     ) {
         $this->locationDescription = null === $locationDescription ? null : PlainTextSanitizer::sanitize($locationDescription);
         $info = null === $additionalInfo ? '' : PlainTextSanitizer::sanitizeMultiline($additionalInfo);

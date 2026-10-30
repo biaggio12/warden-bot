@@ -7,11 +7,16 @@ export interface SentMessage {
   note?: string;
 }
 
+/** Why an alert is retired: its time ran out, or a player reported the Warden dead. */
+export type CloseReason = 'expired' | 'killed';
+
 interface Entry {
   spawn: WardenSpawned;
   messages: SentMessage[];
   timer: NodeJS.Timeout | null;
   expired: boolean;
+  /** Reported dead: the alert already shows it, expiry only removes it. */
+  killed: boolean;
 }
 
 /**
@@ -24,7 +29,7 @@ export class SpawnRegistry {
   private readonly entries = new Map<string, Entry>();
 
   constructor(
-    private readonly onExpire: (spawn: WardenSpawned, messages: SentMessage[]) => Promise<void>,
+    private readonly onExpire: (spawn: WardenSpawned, messages: SentMessage[], reason: CloseReason) => Promise<void>,
     private readonly retentionMs = 60 * 60_000,
   ) {}
 
@@ -35,7 +40,7 @@ export class SpawnRegistry {
     const delay = Math.max(0, new Date(spawn.expires_at).getTime() - Date.now());
     const timer = setTimeout(() => void this.expire(spawn.spawn_id), delay);
     timer.unref();
-    this.entries.set(spawn.spawn_id, { spawn, messages: [], timer, expired: false });
+    this.entries.set(spawn.spawn_id, { spawn, messages: [], timer, expired: false, killed: false });
   }
 
   addMessage(spawnId: string, message: SentMessage): void {
@@ -44,6 +49,23 @@ export class SpawnRegistry {
 
   get(spawnId: string): WardenSpawned | null {
     return this.entries.get(spawnId)?.spawn ?? null;
+  }
+
+  messagesOf(spawnId: string): SentMessage[] {
+    return this.entries.get(spawnId)?.messages ?? [];
+  }
+
+  /**
+   * Flags a live spawn as killed. false when it is not tracked, already over or already
+   * flagged (redelivered event), so the kill is announced once.
+   */
+  markKilled(spawnId: string): boolean {
+    const entry = this.entries.get(spawnId);
+    if (!entry || entry.expired || entry.killed) {
+      return false;
+    }
+    entry.killed = true;
+    return true;
   }
 
   isExpired(spawnId: string): boolean {
@@ -63,7 +85,7 @@ export class SpawnRegistry {
     const cleanup = setTimeout(() => this.entries.delete(spawnId), this.retentionMs);
     cleanup.unref();
 
-    await this.onExpire(entry.spawn, entry.messages);
+    await this.onExpire(entry.spawn, entry.messages, entry.killed ? 'killed' : 'expired');
     return true;
   }
 

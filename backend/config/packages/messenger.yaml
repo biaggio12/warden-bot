@@ -17,6 +17,7 @@ framework:
         routing:
             App\Message\WardenSpawnedEvent: discord_events
             App\Message\WardenExpiredEvent: discord_events
+            App\Message\WardenKilledEvent: discord_events
 
 when@test:
     framework:

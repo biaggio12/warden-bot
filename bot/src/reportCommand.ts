@@ -10,8 +10,9 @@ import {
 import type { ApiClient } from './api.js';
 import { rankMatches, type MonsterCatalog } from './monsterCatalog.js';
 
-export const TTL_CHOICES = [5, 7, 10, 15] as const;
-const DEFAULT_TTL = 7;
+/** A Warden disappears on its own 10 minutes after it shows up. */
+export const TTL_CHOICES = [2, 4, 6, 8, 10] as const;
+const DEFAULT_TTL = 8;
 
 /** A problem the player can fix; its message is shown to them as is. */
 export class UserError extends Error {}
@@ -67,6 +68,7 @@ export class ReportCommand {
       location_description: interaction.options.getString('location', true),
       additional_info: interaction.options.getString('info'),
       ttl_minutes: interaction.options.getInteger('time') ?? DEFAULT_TTL,
+      discord_guild_id: interaction.guildId,
     });
 
     await interaction.editReply(

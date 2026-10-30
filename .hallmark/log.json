@@ -1,0 +1,54 @@
+[
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "app",
+  "shape": "app screen",
+  "theme": "custom",
+  "axes": "dark/pixel/warm",
+  "nav": "heavy HUD bar with the pixel wordmark",
+  "footer": "none (app)",
+  "hero": "none (app)",
+  "imagery": "creature GIFs from TibiaWiki in framed slots",
+  "photos": [],
+  "entry": "report",
+  "fingerprint": "arcade-hud-app",
+  "sections": [
+   "report form + HP-bar monster cards",
+   "bestiary XP panels",
+   "stats HUD strip + high-score table",
+   "characters panel + discord",
+   "login"
+  ],
+  "signature": "the HP bar on each active report, ten segments draining to red",
+  "waived": [],
+  "prompt": "arcade HUD for a Tibia guild tool; replaces the rejected Vellum pass",
+  "date": "2026-10-29"
+ },
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "app",
+  "shape": "app screen",
+  "theme": "vellum",
+  "axes": "light/blackletter/cool",
+  "nav": "top bar, wordmark masthead over a double rule",
+  "footer": "none (app)",
+  "hero": "none (app)",
+  "imagery": "creature GIFs from TibiaWiki",
+  "photos": [],
+  "entry": "report",
+  "fingerprint": "vellum-ledger-app",
+  "sections": [
+   "report form + day book",
+   "bestiary ledger",
+   "stats figures + ledgers",
+   "characters ledger + discord well",
+   "login"
+  ],
+  "signature": "the bestiary ledger",
+  "waived": [],
+  "prompt": "guild tool for Tibia players: report Wardens, track bestiary, reporter stats",
+  "date": "2026-10-29"
+ }
+]

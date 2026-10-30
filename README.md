@@ -122,7 +122,15 @@ oznacza Monzę), a poza takim kanałem ze świata, na którym gracz ma najwięce
 pierwszy alfabetycznie, jak w formularzu web). Zgłoszenie działa jak to z aplikacji: alert z pingami
 pojawia się na kanale.
 
-Pod alertem na kanale są trzy przyciski: `[Killed]`, `[OMW]` i `[On site]`. `[OMW]` dopisuje gracza do listy
+Gdy bot jest na kilku serwerach Discord, zgłoszenie z `/report` trafia tylko na serwer, na którym użyto
+komendy. Zgłoszenie z aplikacji trafia na serwery, na których jest zgłaszający. Jeśli zgłaszający nie ma
+podpiętego Discorda, alert idzie na wszystkie serwery z kanałem `#wardens-<świat>`.
+
+Alert pokazuje też, kto zgłosił Wardena (pole „Reported by”): wzmiankę Discord i postacie zgłaszającego na
+tym świecie, bo zwykle to on daje znać w grze, kiedy atakować. Aplikacja pokazuje to samo przy aktywnym
+zgłoszeniu. E-mail konta nigdy nie jest pokazywany.
+
+Pod alertem na kanale są cztery przyciski: `[Killed]`, `[OMW]`, `[On site]` i `[Gone]`. `[OMW]` dopisuje gracza do listy
 „On my way”, a `[On site]` do listy „On site” i zdejmuje go z „On my way”. Gracz jest najwyżej na jednej liście,
 a ponowne kliknięcie tego samego przycisku go wypisuje. Listy są zapisane w samej wiadomości, więc przetrwają
 restart bota. Wzmianki na nich pokazują nicki, ale nikogo nie pingują. Po skutecznym `[Killed]` gracz znika
@@ -132,6 +140,14 @@ Przycisk `[Killed]`:
 - jedna postać gracza na tym świecie → od razu oznacza potwora i odpowiada efemerycznie
   „Zaliczono [potwór] dla postaci [postać]”;
 - kilka postaci → efemeryczne menu „Dla której postaci chcesz zaliczyć potwora?”.
+
+Przycisk `[Gone]` zamyka zgłoszenie przed czasem, gdy Warden już padł. Najpierw pyta efemerycznie o
+potwierdzenie, a po nim backend (`POST /api/v1/warden-spawns/{id}/kill`) ustawia status `KILLED` i publikuje
+`warden.killed`. Bot nie usuwa wtedy alertu: oznacza go jako martwy (💀, „Killed, reported by …”, przyciski
+wyłączone, listy OMW / On site zostają) i odpowiada na niego wiadomością pingującą graczy z tych list.
+Alert i ta odpowiedź znikają o pierwotnej porze wygaśnięcia. Zgłaszający jest pokazany jako wzmianka Discord
+albo nick Discord; e-mail konta nigdy nie trafia na Discorda. To samo robi przycisk „Gone? Remove report” przy aktywnym zgłoszeniu
+w aplikacji. Zamknąć zgłoszenie może każdy zalogowany gracz (na Discordzie: z podpiętym kontem), tak jak je zgłosić.
 
 ## API (`/api/v1`)
 
@@ -155,7 +171,7 @@ z listą `violations[]` (`property_path`, `title`).
 | PUT | `/characters/{id}/killed-monsters` | właściciel | zbiorczo `{add: [], remove: []}`, jedno żądanie na całą kategorię |
 | GET | `/warden-spawns?server_name=` | gracz | aktywne zgłoszenia |
 | GET | `/stats?period=7d\|30d\|all` | gracz | statystyki zgłoszeń, ranking zgłaszających i dane zalogowanego gracza |
-| POST | `/warden-spawns` | gracz | zgłoszenie, `ttl_minutes` 3–30 (domyślnie 7) |
+| POST | `/warden-spawns` | gracz | zgłoszenie, `ttl_minutes` 1–10 (domyślnie 8; Warden znika sam po 10 minutach) |
 | GET | `/internal/warden-spawns/{id}/recipients` | bot | odbiorcy DM |
 | POST | `/internal/discord-links` | bot | `{code, discord_user_id}` |
 
@@ -171,10 +187,15 @@ Exchange `warden_events` (fanout), kolejka `discord_bot`, treść JSON:
 { "event": "warden.spawned", "occurred_at": "2026-10-29T12:00:00Z",
   "data": { "spawn_id": "…", "monster": {"id": 142, "name": "Dragon Warden", "category": "Dragons"},
             "server_name": "Monza", "location_description": "…", "reported_by_discord_user_id": null,
+            "reported_by_characters": ["Sir Tester"], "reported_by_name": "lukasz",
             "created_at": "…", "expires_at": "2026-10-29T12:07:00Z" } }
 
 { "event": "warden.expired", "occurred_at": "…",
   "data": { "spawn_id": "…", "monster_id": 142, "server_name": "Monza", "expires_at": "…" } }
+
+{ "event": "warden.killed", "occurred_at": "…",
+  "data": { "spawn_id": "…", "monster_id": 142, "server_name": "Monza",
+            "killed_by_discord_user_id": "1234…", "killed_by_name": "lukasz" } }
 ```
 
 Format definiuje `backend/src/Messenger/JsonEventSerializer.php`, a odczytuje go `bot/src/events.ts`.
@@ -249,6 +270,22 @@ rozgrzanym cache, statyczny bundle Reacta serwowany przez nginx, bot skompilowan
 w nich bind mountów, a baza i broker nie wystawiają portów. Przed startem ustaw w `.env` prawdziwe
 `APP_SECRET`, `BOT_API_TOKEN`, `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` i `VITE_API_URL`
 (ten ostatni jest wbudowywany w bundle w czasie budowania).
+
+### Publicznie na tym serwerze
+
+`https://warden.23-88-19-218.sslip.io` (sslip.io zamienia nazwę na IP serwera). Porty 80/443 należą do Caddy
+z projektu openGym (`~/gym/openGym/Caddyfile`), który ma blok dla tej domeny, sam robi HTTPS (Let's Encrypt)
+i kieruje `/api/*` do `warden-api`, a resztę do `warden-web`. `docker-compose.public.yml` dołącza nasze nginx
+i frontend do sieci `opengym_default` pod tymi aliasami i nie publikuje żadnych portów:
+
+```bash
+make public-up     # build produkcyjny + start; po każdej zmianie w kodzie uruchom ponownie
+make public-down
+```
+
+W `.env`: `FRONTEND_URL` i `VITE_API_URL` to adres publiczny, `CORS_ALLOW_ORIGIN` go dopuszcza, a
+`BOT_API_TOKEN` jest losowy. Logowanie przez Discord wymaga adresu
+`https://warden.23-88-19-218.sslip.io/auth/discord/callback` w Developer Portal → OAuth2 → Redirects.
 
 ## Założenia poza specyfikacją
 

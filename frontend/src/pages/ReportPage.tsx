@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ApiError } from '../api/client';
 import { endpoints } from '../api/endpoints';
-import type { Monster } from '../api/types';
-import { ClockIcon, MapPinIcon } from '../components/Icons';
+import type { Monster, WardenSpawn } from '../api/types';
+import { EmptyState, PageHead } from '../components/PageHead';
 import MonsterCombobox from '../components/MonsterCombobox';
+import MonsterImage from '../components/MonsterImage';
+import SegmentBar from '../components/SegmentBar';
 import { useToast } from '../components/Toast';
 import { formatClock, formatRemaining } from '../lib/time';
 import { useAsync } from '../lib/useAsync';
 
-export const TTL_OPTIONS = [5, 7, 10, 15] as const;
-const DEFAULT_TTL = 7;
+/** A Warden disappears on its own 10 minutes after it shows up. */
+export const TTL_OPTIONS = [2, 4, 6, 8, 10] as const;
+const DEFAULT_TTL = 8;
 const LOCATION_MIN = 5;
 const LOCATION_MAX = 255;
 const INFO_MAX = 500;
@@ -21,7 +24,7 @@ export default function ReportPage() {
   const cities = useAsync(endpoints.cities, []);
 
   // No world picker: reports go to the world where the player has the most characters
-  // (ties: alphabetical). Other worlds can be reported with /report world:... on Discord.
+  // (ties: alphabetical). Other worlds are reported with /report in that world's Discord channel.
   const server = useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of characters.data ?? []) counts.set(c.server_name, (counts.get(c.server_name) ?? 0) + 1);
@@ -99,7 +102,7 @@ export default function ReportPage() {
     return (
       <EmptyState
         title="Add a character to report Wardens"
-        text="The worlds in the form come from your characters."
+        text="Reports go to the world your characters play on."
         href="#characters"
         action="Go to characters"
       />
@@ -107,14 +110,11 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Report a Warden</h1>
-        <p className="mt-1 text-muted">Players who are missing this monster get a ping on Discord.</p>
-      </div>
+    <>
+      <PageHead title="Report a Warden" lead="Players who are missing this monster get a ping on Discord." />
 
-      <div className="grid items-start gap-6 lg:grid-cols-[1fr_22rem]">
-        <form key={formKey} onSubmit={onSubmit} noValidate className="card space-y-6 p-5 sm:p-6">
+      <div className="grid items-start gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_24rem]">
+        <form key={formKey} onSubmit={onSubmit} noValidate className="panel space-y-6 p-5 sm:p-7">
           <Field label="Monster" error={errorFor('monster_id')}>
             <div onBlur={() => setTouched((t) => ({ ...t, monster_id: true }))}>
               <MonsterCombobox
@@ -129,14 +129,10 @@ export default function ReportPage() {
             </div>
           </Field>
 
-          <Field
-            label="Location"
-            error={errorFor('city') ?? errorFor('location_description')}
-            hint={`${trimmedLocation.length}/${LOCATION_MAX}`}
-          >
-            <div className="grid gap-2 sm:grid-cols-[11rem_1fr]">
+          <Field label="Location" error={errorFor('city') ?? errorFor('location_description')} hint={`${trimmedLocation.length}/${LOCATION_MAX}`}>
+            <div className="grid gap-2 sm:grid-cols-[11rem_minmax(0,1fr)]">
               <select
-                className={`input ${errorFor('city') ? 'border-danger' : ''}`}
+                className={`input ${errorFor('city') ? 'border-hp' : ''}`}
                 aria-label="City"
                 value={city}
                 onChange={(e) => {
@@ -151,7 +147,7 @@ export default function ReportPage() {
                 ))}
               </select>
               <input
-                className={`input ${errorFor('location_description') ? 'border-danger' : ''}`}
+                className={`input ${errorFor('location_description') ? 'border-hp' : ''}`}
                 aria-label="Spot"
                 placeholder="e.g. Dragon Lair -2, by the gate"
                 value={location}
@@ -167,7 +163,7 @@ export default function ReportPage() {
 
           <Field label="Additional info (optional)" error={errorFor('additional_info')} hint={`${trimmedInfo.length}/${INFO_MAX}`}>
             <textarea
-              className={`input min-h-24 resize-y ${errorFor('additional_info') ? 'border-danger' : ''}`}
+              className={`input min-h-24 resize-y ${errorFor('additional_info') ? 'border-hp' : ''}`}
               aria-label="Additional info"
               placeholder="e.g. who is already waiting, the fastest way there, what to watch out for"
               rows={3}
@@ -183,14 +179,9 @@ export default function ReportPage() {
 
           <fieldset>
             <legend className="label mb-2">Time until it disappears</legend>
-            <div className="grid grid-cols-4 gap-1 rounded-xl border border-line bg-raised p-1" role="radiogroup">
+            <div className="cells max-w-md" role="radiogroup">
               {TTL_OPTIONS.map((minutes) => (
-                <label
-                  key={minutes}
-                  className={`cursor-pointer rounded-lg px-3 py-2 text-center text-sm font-semibold transition has-focus-visible:ring-2 has-focus-visible:ring-accent/40 ${
-                    ttl === minutes ? 'bg-surface text-accent-strong shadow-sm' : 'text-muted hover:text-fg'
-                  }`}
-                >
+                <label key={minutes} className={`cell ${ttl === minutes ? 'cell-on' : ''}`}>
                   <input type="radio" name="ttl" className="sr-only" checked={ttl === minutes} onChange={() => setTtl(minutes)} />
                   {minutes} min
                 </label>
@@ -198,44 +189,53 @@ export default function ReportPage() {
             </div>
           </fieldset>
 
-          <button type="submit" className="btn-primary w-full py-3 text-base" disabled={!isValid || submitting}>
+          <button type="submit" className="btn-primary min-h-12 px-10 text-base" disabled={!isValid || submitting}>
             {submitting ? 'Sending…' : 'Report'}
           </button>
         </form>
 
-        <ActiveSpawns server={server} spawns={spawns.data ?? []} />
+        <ActiveSpawns
+          server={server}
+          spawns={spawns.data ?? []}
+          onClosed={(id) => spawns.setData((list) => list?.filter((s) => s.id !== id) ?? list)}
+        />
       </div>
-    </div>
+    </>
   );
 }
 
-export function EmptyState({ title, text, href, action }: { title: string; text: string; href: string; action: string }) {
-  return (
-    <div className="card mx-auto max-w-md p-10 text-center">
-      <p className="font-display text-xl font-bold">{title}</p>
-      <p className="mt-2 mb-6 text-sm text-muted">{text}</p>
-      <a href={href} className="btn-primary">
-        {action}
-      </a>
-    </div>
-  );
+/** The reporter's characters on that world (they call the attack in game), else their Discord name. */
+function reporterName(spawn: WardenSpawn): string {
+  const by = spawn.reported_by;
+  if (by?.characters.length) return by.discord_name ? `${by.characters.join(', ')} (${by.discord_name})` : by.characters.join(', ');
+  return by?.discord_name ?? 'a player';
 }
 
 function Field({ label, error, hint, children }: { label: string; error: string | null; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between">
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-4">
         <span className="label">{label}</span>
         {hint && <span className="text-xs text-subtle tabular-nums">{hint}</span>}
       </div>
       {children}
-      {error && <p className="text-xs font-medium text-danger">{error}</p>}
+      {error && <p className="text-sm font-medium text-hp">{error}</p>}
     </div>
   );
 }
 
-function ActiveSpawns({ server, spawns }: { server: string; spawns: Awaited<ReturnType<typeof endpoints.activeSpawns>> }) {
+type ActiveSpawnsProps = {
+  server: string;
+  spawns: Awaited<ReturnType<typeof endpoints.activeSpawns>>;
+  onClosed: (id: string) => void;
+};
+
+function ActiveSpawns({ server, spawns, onClosed }: ActiveSpawnsProps) {
+  const toast = useToast();
   const [now, setNow] = useState(Date.now);
+  // Closing a report takes the alert down for everyone, so it takes a second click.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [closing, setClosing] = useState<string | null>(null);
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
@@ -243,44 +243,77 @@ function ActiveSpawns({ server, spawns }: { server: string; spawns: Awaited<Retu
 
   const visible = spawns.filter((s) => new Date(s.expires_at).getTime() > now);
 
+  async function close(id: string, name: string) {
+    setClosing(id);
+    try {
+      await endpoints.killSpawn(id);
+      onClosed(id);
+      toast(`${name} marked as dead. Players on the way were told on Discord.`, 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setClosing(null);
+      setConfirming(null);
+    }
+  }
+
   return (
-    <aside className="card p-5 lg:sticky lg:top-24">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-semibold">Active reports</h2>
-        <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-muted">{server || '—'}</span>
-      </div>
+    <aside className="lg:sticky lg:top-24">
+      <h2 className="mb-4">
+        Active on <span>{server || 'your world'}</span>
+      </h2>
       {visible.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">No active reports.</div>
+        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">No active reports.</p>
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-4">
           {visible.map((spawn) => {
             const start = new Date(spawn.created_at).getTime();
             const end = new Date(spawn.expires_at).getTime();
             const left = Math.max(0, Math.min(1, (end - now) / (end - start)));
+            const late = left < 0.25;
             return (
-              <li key={spawn.id} className="rounded-xl border border-line bg-raised/50 p-3.5">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-semibold">{spawn.monster.name}</span>
-                  <span className={`flex items-center gap-1 font-mono text-sm tabular-nums ${left < 0.25 ? 'text-danger' : 'text-accent-strong'}`}>
-                    <ClockIcon className="h-3.5 w-3.5" />
-                    {formatRemaining(spawn.expires_at, now)}
+              <li key={spawn.id} className="panel p-4">
+                <div className="flex gap-3">
+                  <span className="flex h-14 w-14 shrink-0 items-center justify-center border-2 border-outline bg-paper">
+                    <MonsterImage src={spawn.monster.image_url ?? null} className="h-12 w-12" />
                   </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="truncate text-lg font-semibold">{spawn.monster.name}</p>
+                      <span className={`text-lg font-bold tabular-nums ${late ? 'text-hp' : 'text-ink'}`}>{formatRemaining(spawn.expires_at, now)}</span>
+                    </div>
+                    <p className="mt-0.5 text-sm text-muted">
+                      {spawn.city ? `${spawn.city}, ` : ''}
+                      {spawn.location_description}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      Reported by <span className="font-semibold text-ink">{reporterName(spawn)}</span>
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-1 flex items-start gap-1.5 text-sm text-muted">
-                  <MapPinIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    {spawn.city && <span className="font-medium text-fg">{spawn.city} — </span>}
-                    {spawn.location_description}
-                  </span>
-                </p>
-                {spawn.additional_info && (
-                  <p className="mt-2 border-l-2 border-accent/50 pl-2.5 text-xs whitespace-pre-line text-muted">{spawn.additional_info}</p>
-                )}
-                <div className="mt-3 h-1 overflow-hidden rounded-full bg-line">
-                  <div
-                    className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${left < 0.25 ? 'bg-danger' : 'bg-accent'}`}
-                    style={{ width: `${left * 100}%` }}
-                  />
+                <SegmentBar value={left} kind="hp" className="mt-3" />
+                {spawn.additional_info && <p className="mt-3 border-t-2 border-rule pt-2 text-sm whitespace-pre-line text-ink-2">{spawn.additional_info}</p>}
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  {confirming === spawn.id ? (
+                    <>
+                      <span className="mr-auto text-sm text-muted">Killed already?</span>
+                      <button type="button" className="btn-quiet" onClick={() => setConfirming(null)} disabled={closing === spawn.id}>
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="btn bg-hp text-hp-ink hover:bg-hp"
+                        onClick={() => close(spawn.id, spawn.monster.name)}
+                        disabled={closing === spawn.id}
+                      >
+                        {closing === spawn.id ? 'Closing…' : 'Yes, remove it'}
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" className="btn-quiet" onClick={() => setConfirming(spawn.id)}>
+                      Gone? Remove report
+                    </button>
+                  )}
                 </div>
               </li>
             );

@@ -11,10 +11,10 @@ interface Toast {
 
 const ToastContext = createContext<((message: string, kind?: ToastKind) => void) | null>(null);
 
-const accents: Record<ToastKind, string> = {
-  success: 'bg-ok-soft text-ok',
-  error: 'bg-danger-soft text-danger',
-  info: 'bg-accent-soft text-accent-strong',
+const marks: Record<ToastKind, string> = {
+  success: 'text-success',
+  error: 'text-error',
+  info: 'text-accent-text',
 };
 
 let nextId = 1;
@@ -36,18 +36,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext value={show}>
       {children}
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-2 sm:left-auto">
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-4 z-(--z-toast) flex flex-col items-end gap-2 sm:left-auto">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             role="status"
-            className="card pointer-events-auto flex w-full max-w-sm items-start gap-3 p-3 pr-2 text-sm"
+            className="panel pointer-events-auto flex w-full max-w-sm items-start gap-3 py-2 pr-2 pl-4 text-sm text-ink"
           >
-            <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${accents[toast.kind]}`}>
-              {toast.kind === 'error' ? <XIcon /> : <CheckIcon />}
-            </span>
+            <span className={`mt-1 shrink-0 ${marks[toast.kind]}`}>{toast.kind === 'error' ? <XIcon /> : <CheckIcon />}</span>
             <span className="flex-1 py-0.5">{toast.message}</span>
-            <button type="button" onClick={() => dismiss(toast.id)} className="rounded-lg p-1 text-subtle hover:bg-raised hover:text-fg" aria-label="Close">
+            <button type="button" onClick={() => dismiss(toast.id)} className="btn-quiet min-w-10 justify-center" aria-label="Close">
               <XIcon />
             </button>
           </div>

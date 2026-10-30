@@ -1,0 +1,51 @@
+# Public deployment on this host, behind the Caddy of the openGym project, which owns
+# ports 80/443 and terminates HTTPS:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.public.yml up -d --build
+# nginx (API) and frontend join openGym's Docker network as warden-api / warden-web and
+# publish no ports of their own, so only Caddy reaches them. The Caddy site block:
+#
+#   warden.23-88-19-218.sslip.io {
+#       encode zstd gzip
+#       handle /api/* {
+#           reverse_proxy warden-api:80
+#       }
+#       handle {
+#           reverse_proxy warden-web:80
+#       }
+#   }
+
+# This host blocks outbound traffic from Docker's bridge network, so images build on the host network.
+x-build-on-host: &build-on-host
+  build:
+    network: host
+
+services:
+  php:
+    <<: *build-on-host
+  worker:
+    <<: *build-on-host
+  bot:
+    <<: *build-on-host
+
+  nginx:
+    build:
+      network: host
+    ports: !reset []
+    networks:
+      default:
+      edge:
+        aliases: [warden-api]
+
+  frontend:
+    build:
+      network: host
+    ports: !reset []
+    networks:
+      default:
+      edge:
+        aliases: [warden-web]
+
+networks:
+  edge:
+    name: opengym_default
+    external: true

@@ -9,10 +9,10 @@ import './index.css';
 
 function CrashScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="card max-w-sm p-8 text-center">
-        <p className="font-display text-xl font-bold">Something went wrong</p>
-        <p className="mt-2 mb-6 text-sm text-muted">The error has been reported. Reload the page to try again.</p>
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4">
+      <div className="panel max-w-sm p-8">
+        <h1>Something went wrong</h1>
+        <p className="mt-4 mb-6 text-muted">The error has been reported. Reload the page to try again.</p>
         <button type="button" className="btn-primary" onClick={() => window.location.reload()}>
           Reload page
         </button>

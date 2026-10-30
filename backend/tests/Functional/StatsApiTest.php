@@ -2,6 +2,7 @@
 
 namespace App\Tests\Functional;
 
+use App\Entity\CharacterKilledMonster;
 use App\Entity\User;
 use App\Entity\WardenSpawn;
 
@@ -50,6 +51,28 @@ final class StatsApiTest extends ApiTestCase
         self::assertSame(6, $all['totals']['reports']);
         self::assertCount(90, $all['reports_per_day']);
         self::assertSame('qu…', $all['leaderboard'][2]['player'], 'e-mail addresses are never shown in full');
+    }
+
+    public function testRanksCharactersByBestiaryProgress(): void
+    {
+        $me = $this->createUser('me@example.com');
+        $rival = $this->createUser('rival@example.com');
+        $mine = $this->createCharacter($me, 'My Knight');
+        $theirs = $this->createCharacter($rival, 'Rival Druid', 'Secura');
+        $this->createCharacter($rival, 'Empty Alt');
+        $monsters = [$this->createMonster('Dragon'), $this->createMonster('Hydra'), $this->createMonster('Behemoth')];
+        foreach ($monsters as $monster) {
+            $this->em->persist(new CharacterKilledMonster($theirs, $monster, new \DateTimeImmutable('-1 year')));
+        }
+        $this->em->persist(new CharacterKilledMonster($mine, $monsters[0]));
+        $this->em->flush();
+
+        $stats = $this->requestJson('GET', '/api/v1/stats?period=7d', token: $this->tokenFor($me));
+
+        self::assertSame([
+            ['rank' => 1, 'character' => 'Rival Druid', 'server_name' => 'Secura', 'killed' => 3, 'total' => 3, 'is_you' => false],
+            ['rank' => 2, 'character' => 'My Knight', 'server_name' => 'Monza', 'killed' => 1, 'total' => 3, 'is_you' => true],
+        ], $stats['bestiary_leaderboard'], 'all-time progress, whatever the period; characters with nothing marked are left out');
     }
 
     public function testRejectsUnknownPeriodAndAnonymousUsers(): void

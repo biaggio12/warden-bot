@@ -1,0 +1,45 @@
+:root {
+  color-scheme: light;
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.2rem; --text-xl: 1.44rem; --text-2xl: 1.728rem; --text-3xl: 2.074rem;
+  --text-display-s: 1.44rem; --text-display: 1.728rem; --text-section: 1.2rem; --text-title: 1rem; --text-lead: 1rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+  --color-error: oklch(52% 0.19 27); --color-success: oklch(50% 0.12 150);
+  --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+  /* Warden Tracker HUD (custom). Four named roles, each with one job:
+     gold = the action you take and the current selection; hp = time running out, danger;
+     xp = progress and success; mana = data marks and links. */
+  --color-paper: oklch(93% 0.02 255); --color-paper-2: oklch(98.5% 0.008 255); --color-paper-3: oklch(95% 0.015 255);
+  --color-ink: oklch(22% 0.04 262); --color-ink-2: oklch(32% 0.04 262); --color-muted: oklch(46% 0.04 260); --color-subtle: oklch(52% 0.035 258);
+  --color-rule: oklch(84% 0.025 258);
+  --color-outline: oklch(22% 0.04 262);
+  --color-edge: oklch(40% 0.04 262);
+  --color-accent: oklch(83% 0.16 85); --color-accent-deep: oklch(76% 0.16 78); --color-accent-soft: oklch(93% 0.07 88); --color-accent-ink: oklch(20% 0.04 70);
+  --color-accent-text: oklch(48% 0.12 70);
+  --color-focus: oklch(50% 0.17 260);
+  --color-hp: oklch(53% 0.2 25); --color-hp-ink: oklch(98% 0.01 25); --color-xp: oklch(52% 0.15 145); --color-mana: oklch(50% 0.17 260);
+  --color-error: var(--color-hp); --color-success: var(--color-xp); --color-chart: var(--color-mana);
+  /* Medal plates for the top three of the leaderboard (fills with dark text). */
+  --color-medal-1: oklch(83% 0.16 85); --color-medal-2: oklch(82% 0.02 255); --color-medal-3: oklch(70% 0.11 55);
+  --color-discord: oklch(57% 0.2 277); --color-discord-deep: oklch(50% 0.19 277); --color-discord-ink: oklch(97% 0.01 277);
+  --font-display: "Pixelify Sans", ui-monospace, monospace; --font-body: "Lexend", ui-sans-serif, sans-serif;
+  --radius-card: 0px; --border-heavy: 3px; --shadow-hard: 4px 4px 0 var(--color-outline);
+  --body-weight: 400;
+}
+
+/* Dark is the HUD's home: the same roles re-derived for a night ground. */
+.dark {
+  color-scheme: dark;
+  --color-paper: oklch(21% 0.035 262); --color-paper-2: oklch(26% 0.04 262); --color-paper-3: oklch(31% 0.045 262);
+  --color-ink: oklch(95% 0.015 90); --color-ink-2: oklch(88% 0.02 90); --color-muted: oklch(78% 0.03 255); --color-subtle: oklch(70% 0.03 255);
+  --color-rule: oklch(36% 0.045 262);
+  --color-outline: oklch(12% 0.03 262);
+  --color-edge: oklch(64% 0.05 258);
+  --color-accent-soft: oklch(34% 0.07 85);
+  --color-accent-text: oklch(83% 0.16 85);
+  --color-focus: oklch(86% 0.17 88);
+  --color-hp: oklch(66% 0.2 25); --color-hp-ink: oklch(16% 0.03 25); --color-xp: oklch(80% 0.18 142); --color-mana: oklch(66% 0.14 255);
+  --body-weight: 400;
+}

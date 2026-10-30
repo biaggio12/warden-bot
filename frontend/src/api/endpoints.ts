@@ -28,6 +28,8 @@ export const endpoints = {
     api<{ warden_spawns: WardenSpawn[] }>('GET', `/warden-spawns${serverName ? `?server_name=${encodeURIComponent(serverName)}` : ''}`).then(
       (r) => r.warden_spawns,
     ),
+  /** The Warden was killed before its time ran out: closes the report and takes the Discord alert down. */
+  killSpawn: (id: string) => api<WardenSpawn>('POST', `/warden-spawns/${id}/kill`),
   stats: (period: StatsPeriod) => api<Stats>('GET', `/stats?period=${period}`),
   reportSpawn: (payload: {
     monster_id: number;

@@ -69,7 +69,7 @@ describe('/report', () => {
       city: 'Venore',
       location_description: 'Dragon Lair -2',
       additional_info: null,
-      ttl_minutes: 7,
+      ttl_minutes: 8,
     });
     expect(interaction.editReply.mock.calls[0]![0]).toContain('Reported **Dragon Warden** on **Monza**');
   });
@@ -77,9 +77,9 @@ describe('/report', () => {
   it('accepts a typed-in monster name, TTL and additional info', async () => {
     const { api, handler } = setup();
 
-    await handler.handle(command({ ...required, monster: 'hydra', time: 15, info: 'Dwie osoby czekają' }) as never);
+    await handler.handle(command({ ...required, monster: 'hydra', time: 4, info: 'Dwie osoby czekają' }) as never);
 
-    expect(api.reportSpawn).toHaveBeenCalledWith('999000', expect.objectContaining({ monster_id: 7, ttl_minutes: 15, additional_info: 'Dwie osoby czekają' }));
+    expect(api.reportSpawn).toHaveBeenCalledWith('999000', expect.objectContaining({ monster_id: 7, ttl_minutes: 4, additional_info: 'Dwie osoby czekają' }));
   });
 
   it('takes the world from the #wardens-<world> channel name', async () => {

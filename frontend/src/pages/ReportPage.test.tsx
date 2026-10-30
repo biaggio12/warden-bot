@@ -12,6 +12,7 @@ vi.mock('../api/endpoints', () => ({
     cities: vi.fn(),
     activeSpawns: vi.fn(),
     reportSpawn: vi.fn(),
+    killSpawn: vi.fn(),
   },
 }));
 
@@ -113,8 +114,29 @@ describe('ReportPage', () => {
     expect(screen.queryByRole('combobox', { name: /world/i })).not.toBeInTheDocument();
   });
 
-  it('defaults the TTL to 7 minutes', async () => {
+  it('defaults the TTL to 8 minutes', async () => {
     renderPage();
-    expect(await screen.findByRole('radio', { name: '7 min' })).toBeChecked();
+    expect(await screen.findByRole('radio', { name: '8 min' })).toBeChecked();
+  });
+
+  it('closes a report early after a second click', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    const spawn = {
+      id: 's1', monster: { id: 7, name: 'Hydra' }, server_name: 'Monza', city: 'Thais', location_description: 'Hydra cave',
+      additional_info: null, status: 'ACTIVE' as const, reported_by: { characters: ['Sir Tester'], discord_name: 'lukasz' },
+      created_at: new Date(now - 60_000).toISOString(), expires_at: new Date(now + 5 * 60_000).toISOString(),
+    };
+    mocked.activeSpawns.mockResolvedValue([spawn]);
+    mocked.killSpawn.mockResolvedValue({ ...spawn, status: 'KILLED' });
+    renderPage();
+
+    expect(await screen.findByText('Sir Tester (lukasz)')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Gone? Remove report' }));
+    expect(mocked.killSpawn).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Yes, remove it' }));
+
+    expect(mocked.killSpawn).toHaveBeenCalledWith('s1');
+    await waitFor(() => expect(screen.getByText('No active reports.')).toBeInTheDocument());
   });
 });

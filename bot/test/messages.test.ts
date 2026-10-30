@@ -2,6 +2,7 @@ import { ButtonStyle, ComponentType } from 'discord.js';
 import { describe, expect, it } from 'vitest';
 import {
   allButtonsDisabled,
+  bestiaryUrlOf,
   buildSpawnMessage,
   disabledButtonRows,
   killButtonId,
@@ -26,12 +27,22 @@ function render(options: Parameters<typeof buildSpawnMessage>[1] = {}, overrides
 }
 
 describe('buildSpawnMessage', () => {
+  it.each([
+    [{ reported_by_discord_user_id: '42', reported_by_characters: ['Sir Tester', 'Lady_Tester'] }, '<@42> (Sir Tester, Lady\\_Tester)'],
+    [{ reported_by_characters: [], reported_by_name: 'lukasz' }, 'lukasz'],
+    [{ reported_by_characters: ['Sir Tester'] }, 'Sir Tester'],
+    [{ reported_by_characters: [] }, 'a player'],
+  ])('shows who reported it (%o)', (overrides, expected) => {
+    const { embed } = render({}, overrides);
+    expect(embed.fields.find((f: { name: string }) => f.name === 'Reported by')).toEqual({ name: 'Reported by', value: expected, inline: true });
+  });
+
   it('contains monster, location, relative countdown and an active [Killed] button', () => {
     const { embed, button } = render();
     const fields = JSON.stringify(embed.fields);
 
     expect(embed.title).toContain('Dragon Warden');
-    expect(embed.fields.map((f: { name: string }) => f.name)).toEqual(['Class', 'Disappears', 'Location']);
+    expect(embed.fields.map((f: { name: string }) => f.name)).toEqual(['Class', 'Disappears', 'Reported by', 'Location']);
     expect(fields).toContain('Venore — Lair \\\\*-2\\\\*'); // city + markdown-escaped location
     expect(fields).not.toContain('Additional info');
     expect(fields).toContain(`<t:${unixSeconds('2026-10-29T12:07:00Z')}:R>`);
@@ -119,7 +130,7 @@ describe('presence buttons and lists', () => {
     const withButtons = (buildSpawnMessage(spawnFixture(), { onMyWay: true }).components![0] as { toJSON(): any }).toJSON();
     const without = (buildSpawnMessage(spawnFixture()).components![0] as { toJSON(): any }).toJSON();
 
-    expect(withButtons.components.map((c: { label: string }) => c.label)).toEqual(['Killed', 'OMW', 'On site']);
+    expect(withButtons.components.map((c: { label: string }) => c.label)).toEqual(['Killed', 'OMW', 'On site', 'Gone']);
     expect(without.components).toHaveLength(1);
   });
 
@@ -171,5 +182,24 @@ describe('alerts posted before the switch to English', () => {
 
     expect(parsePostedAlert(legacy as never)?.expiresAt).toEqual(new Date('2026-10-29T12:07:00Z'));
     expect(presenceOf(legacy.embeds[0]).onMyWay).toEqual(['111']);
+  });
+});
+
+describe('bestiary link', () => {
+  const url = bestiaryUrlOf('https://warden.example/');
+
+  it('adds a link to the web app bestiary after the other buttons', () => {
+    const row = (buildSpawnMessage(spawnFixture(), { onMyWay: true, bestiaryUrl: url }).components![0] as { toJSON(): any }).toJSON();
+    expect(row.components.at(-1)).toMatchObject({ style: ButtonStyle.Link, url: 'https://warden.example/#bestiary', label: 'My bestiary' });
+  });
+
+  it('keeps the link usable when the alert expires', () => {
+    const alert = postedAlert(spawnFixture(), { onMyWay: true, bestiaryUrl: url });
+    const rows = disabledButtonRows(alert as never).map((row) => row.toJSON());
+    const buttons = rows[0]!.components as { style: number; disabled?: boolean }[];
+
+    expect(buttons.filter((b) => b.style !== ButtonStyle.Link).every((b) => b.disabled)).toBe(true);
+    expect(buttons.find((b) => b.style === ButtonStyle.Link)?.disabled).toBe(false);
+    expect(allButtonsDisabled({ ...alert, components: rows.map((r) => ({ type: r.type, components: r.components.map((c: any) => ({ ...c, customId: c.custom_id, toJSON: () => c })) })) } as never)).toBe(true);
   });
 });

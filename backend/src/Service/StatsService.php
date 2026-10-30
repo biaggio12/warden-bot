@@ -51,6 +51,7 @@ final readonly class StatsService
                 ],
                 \array_slice($leaderboard, 0, self::TOP),
             ),
+            'bestiary_leaderboard' => $this->bestiaryLeaderboard($viewer),
             'you' => [
                 'reports' => $mine['reports'] ?? 0,
                 'rank' => $mine['rank'] ?? null,
@@ -155,6 +156,35 @@ final readonly class StatsService
         }
 
         return mb_substr(strstr($email, '@', true) ?: $email, 0, 2).'…';
+    }
+
+    /**
+     * Characters with the most monsters marked in the bestiary, all time (the bestiary
+     * only grows, and bulk marking would make a per-period count meaningless). Ties share
+     * a rank; characters with nothing marked are left out.
+     *
+     * @return list<array{rank: int, character: string, server_name: string, killed: int, total: int, is_you: bool}>
+     */
+    private function bestiaryLeaderboard(User $viewer): array
+    {
+        $total = (int) $this->db->fetchOne('SELECT COUNT(*) FROM monsters');
+        $rows = $this->db->fetchAllAssociative(
+            'SELECT c.name, c.server_name, c.user_id, COUNT(*) AS killed,
+                    RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
+             FROM character_killed_monsters k JOIN characters c ON c.id = k.character_id
+             GROUP BY c.id, c.name, c.server_name, c.user_id
+             ORDER BY killed DESC, c.name ASC
+             LIMIT '.self::TOP,
+        );
+
+        return array_map(static fn (array $r) => [
+            'rank' => (int) $r['rank'],
+            'character' => (string) $r['name'],
+            'server_name' => (string) $r['server_name'],
+            'killed' => (int) $r['killed'],
+            'total' => $total,
+            'is_you' => (int) $r['user_id'] === $viewer->getId(),
+        ], $rows);
     }
 
     /**

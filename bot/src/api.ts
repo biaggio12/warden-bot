@@ -27,6 +27,8 @@ export interface SpawnReport {
   location_description: string;
   additional_info: string | null;
   ttl_minutes: number;
+  /** The server /report was used in; the alert is posted there only. */
+  discord_guild_id: string | null;
 }
 
 export interface ReportedSpawn {
@@ -85,6 +87,11 @@ export class ApiClient {
   /** Reports a Warden as the linked player; the backend then publishes the alert event. */
   async reportSpawn(discordUserId: string, report: SpawnReport): Promise<ReportedSpawn> {
     return this.request('POST', '/warden-spawns', report, discordUserId);
+  }
+
+  /** Closes the report early (the Warden is dead); the backend then publishes warden.killed. */
+  async killSpawn(discordUserId: string, spawnId: string): Promise<void> {
+    await this.request('POST', `/warden-spawns/${encodeURIComponent(spawnId)}/kill`, undefined, discordUserId);
   }
 
   /** @returns true when the kill was recorded now, false when it already existed */

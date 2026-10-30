@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from 'react';
 import type { Monster } from '../api/types';
+import MonsterImage from './MonsterImage';
 
 interface Props {
   monsters: Monster[];
@@ -34,7 +35,7 @@ export default function MonsterCombobox({ monsters, value, onChange, invalid }: 
   return (
     <div className="relative">
       <input
-        className={`input ${invalid ? 'border-danger' : ''}`}
+        className={`input ${invalid ? 'border-error' : ''}`}
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
@@ -68,7 +69,7 @@ export default function MonsterCombobox({ monsters, value, onChange, invalid }: 
         }}
       />
       {open && matches.length > 0 && (
-        <ul id={listId} role="listbox" className="card absolute z-20 mt-1.5 max-h-72 w-full overflow-auto p-1.5">
+        <ul id={listId} role="listbox" className="panel absolute z-(--z-dropdown) mt-1 max-h-72 w-full overflow-auto">
           {matches.map((monster, index) => (
             <li
               key={monster.id}
@@ -80,12 +81,13 @@ export default function MonsterCombobox({ monsters, value, onChange, invalid }: 
                 pick(monster);
               }}
               onMouseEnter={() => setActive(index)}
-              className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${
-                index === active ? 'bg-accent-soft text-accent-strong' : ''
+              className={`flex cursor-pointer items-center gap-3 border-b-2 border-rule px-3 py-1.5 text-sm last:border-b-0 ${
+                index === active ? 'bg-accent-soft' : ''
               }`}
             >
-              <span>{monster.name}</span>
-              <span className="text-xs text-subtle">{monster.category}</span>
+              <MonsterImage src={monster.image_url} className="h-8 w-8" />
+              <span className="flex-1 font-medium">{monster.name}</span>
+              <span className="text-xs text-muted">{monster.category}</span>
             </li>
           ))}
         </ul>

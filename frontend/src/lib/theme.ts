@@ -8,9 +8,9 @@ const media = () => window.matchMedia('(prefers-color-scheme: dark)');
 function readTheme(): Theme {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved === 'light' || saved === 'dark' ? saved : 'system';
+    return saved === 'light' || saved === 'system' ? saved : 'dark';
   } catch {
-    return 'system';
+    return 'dark';
   }
 }
 
@@ -19,7 +19,7 @@ function apply(theme: Theme): void {
   document.documentElement.classList.toggle('dark', dark);
 }
 
-/** Theme choice persisted per browser; "system" follows the OS setting live. */
+/** Theme choice persisted per browser; dark unless chosen otherwise, "system" follows the OS live. */
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(readTheme);
 
@@ -34,7 +34,7 @@ export function useTheme() {
 
   const setTheme = useCallback((next: Theme) => {
     try {
-      if (next === 'system') localStorage.removeItem(STORAGE_KEY);
+      if (next === 'dark') localStorage.removeItem(STORAGE_KEY);
       else localStorage.setItem(STORAGE_KEY, next);
     } catch {
       // storage unavailable - the choice lasts for this page view only

@@ -3,6 +3,7 @@
 namespace App\Messenger;
 
 use App\Message\WardenExpiredEvent;
+use App\Message\WardenKilledEvent;
 use App\Message\WardenSpawnedEvent;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
@@ -18,6 +19,7 @@ final class JsonEventSerializer implements SerializerInterface
 {
     public const SPAWNED = 'warden.spawned';
     public const EXPIRED = 'warden.expired';
+    public const KILLED = 'warden.killed';
 
     public function encode(Envelope $envelope): array
     {
@@ -37,6 +39,9 @@ final class JsonEventSerializer implements SerializerInterface
                 'location_description' => $message->locationDescription,
                 'additional_info' => $message->additionalInfo,
                 'reported_by_discord_user_id' => '' !== $message->reportedByDiscordUserId ? $message->reportedByDiscordUserId : null,
+                'reported_by_characters' => $message->reportedByCharacters,
+                'reported_by_name' => $message->reportedByName,
+                'discord_guild_id' => $message->discordGuildId,
                 'created_at' => self::formatDate($message->createdAt),
                 'expires_at' => self::formatDate($message->expiresAt),
             ]],
@@ -45,6 +50,13 @@ final class JsonEventSerializer implements SerializerInterface
                 'monster_id' => $message->monsterId,
                 'server_name' => $message->serverName,
                 'expires_at' => self::formatDate($message->expiresAt),
+            ]],
+            $message instanceof WardenKilledEvent => [self::KILLED, [
+                'spawn_id' => $message->spawnId,
+                'monster_id' => $message->monsterId,
+                'server_name' => $message->serverName,
+                'killed_by_discord_user_id' => '' !== $message->killedByDiscordUserId ? $message->killedByDiscordUserId : null,
+                'killed_by_name' => $message->killedByName,
             ]],
             default => throw new \InvalidArgumentException(\sprintf('Message "%s" is not an integration event.', $message::class)),
         };
@@ -80,6 +92,9 @@ final class JsonEventSerializer implements SerializerInterface
                     city: $data['city'] ?? null,
                     additionalInfo: $data['additional_info'] ?? null,
                     reportedByDiscordUserId: (string) ($data['reported_by_discord_user_id'] ?? ''),
+                    reportedByCharacters: $data['reported_by_characters'] ?? [],
+                    reportedByName: $data['reported_by_name'] ?? null,
+                    discordGuildId: $data['discord_guild_id'] ?? null,
                     createdAt: new \DateTimeImmutable($data['created_at']),
                     expiresAt: new \DateTimeImmutable($data['expires_at']),
                 ),
@@ -88,6 +103,13 @@ final class JsonEventSerializer implements SerializerInterface
                     monsterId: $data['monster_id'],
                     serverName: $data['server_name'],
                     expiresAt: new \DateTimeImmutable($data['expires_at']),
+                ),
+                self::KILLED => new WardenKilledEvent(
+                    spawnId: $data['spawn_id'],
+                    monsterId: $data['monster_id'],
+                    serverName: $data['server_name'],
+                    killedByDiscordUserId: (string) ($data['killed_by_discord_user_id'] ?? ''),
+                    killedByName: $data['killed_by_name'] ?? null,
                 ),
                 default => throw new MessageDecodingFailedException('Unknown event type.'),
             };

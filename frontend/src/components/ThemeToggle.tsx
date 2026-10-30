@@ -9,7 +9,6 @@ const OPTIONS: { value: Theme; label: string; Icon: typeof SunIcon }[] = [
 
 export default function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-
   const current = OPTIONS.find((o) => o.value === theme) ?? OPTIONS[2]!;
   const next = OPTIONS[(OPTIONS.indexOf(current) + 1) % OPTIONS.length]!;
 
@@ -18,37 +17,29 @@ export default function ThemeToggle() {
       {/* Phones: one button cycling light -> dark -> system. */}
       <button
         type="button"
-        className="btn-ghost p-2 sm:hidden"
+        className="btn min-w-10 shrink-0 px-2 sm:hidden"
         onClick={() => setTheme(next.value)}
         aria-label={`${current.label} (switch to: ${next.label.toLowerCase()})`}
         title={current.label}
       >
         <current.Icon />
       </button>
-      <ThemeSegments theme={theme} setTheme={setTheme} />
+      <div role="radiogroup" aria-label="Theme" className="cells hidden shrink-0 sm:flex">
+        {OPTIONS.map(({ value, label, Icon }) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={theme === value}
+            aria-label={label}
+            title={label}
+            onClick={() => setTheme(value)}
+            className={`cell min-w-10 px-2 ${theme === value ? 'cell-on' : ''}`}
+          >
+            <Icon />
+          </button>
+        ))}
+      </div>
     </>
-  );
-}
-
-function ThemeSegments({ theme, setTheme }: ReturnType<typeof useTheme>) {
-  return (
-    <div role="radiogroup" aria-label="Theme" className="hidden rounded-xl border border-line bg-raised p-0.5 sm:flex">
-      {OPTIONS.map(({ value, label, Icon }) => (
-        <button
-          key={value}
-          type="button"
-          role="radio"
-          aria-checked={theme === value}
-          aria-label={label}
-          title={label}
-          onClick={() => setTheme(value)}
-          className={`rounded-[10px] p-1.5 transition ${
-            theme === value ? 'bg-surface text-accent shadow-sm' : 'text-subtle hover:text-fg'
-          }`}
-        >
-          <Icon />
-        </button>
-      ))}
-    </div>
   );
 }

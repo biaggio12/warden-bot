@@ -20,6 +20,10 @@ const stats: Stats = {
     { rank: 1, player: 'Rival', reports: 7, is_you: false },
     { rank: 2, player: 'de…', reports: 4, is_you: true },
   ],
+  bestiary_leaderboard: [
+    { rank: 1, character: 'Old Druid', server_name: 'Secura', killed: 412, total: 833, is_you: false },
+    { rank: 2, character: 'Demo Knight', server_name: 'Monza', killed: 83, total: 833, is_you: true },
+  ],
   you: { reports: 4, rank: 2, reporters: 3, reports_all_time: 9, characters: [{ name: 'Demo Knight', server_name: 'Monza', killed: 83, total: 833 }] },
 };
 
@@ -37,8 +41,17 @@ describe('StatsPage', () => {
     const board = screen.getByRole('heading', { name: /Top reporters/ }).parentElement!;
     expect(within(board).getByText('Rival')).toBeInTheDocument();
     expect(within(board).getByText('you')).toBeInTheDocument();
-    expect(screen.getByText('83/833 · 10%')).toBeInTheDocument();
+    expect(screen.getByText('83/833, 10%')).toBeInTheDocument();
     expect(screen.getByRole('table')).toHaveTextContent('29 Oct8');
+  });
+
+  it('ranks characters by bestiary progress', async () => {
+    render(<StatsPage />);
+
+    const board = (await screen.findByRole('heading', { name: 'Bestiary leaders' })).closest('section')!;
+    const rows = within(board).getAllByRole('listitem');
+    expect(rows[0]).toHaveTextContent('Old Druid (Secura)412/833');
+    expect(rows[1]).toHaveTextContent('you');
   });
 
   it('reloads for another period and remembers it', async () => {

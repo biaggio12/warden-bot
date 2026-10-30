@@ -5,6 +5,11 @@ framework:
     # Stateless JSON API - no sessions.
     session: false
 
+    # Behind Caddy -> nginx (both on private Docker networks): take the client IP and
+    # https from their X-Forwarded-* headers. Requests from public addresses are not trusted.
+    trusted_proxies: 'private_ranges'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-proto', 'x-forwarded-host', 'x-forwarded-port']
+
     serializer:
         default_context:
             # JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION

@@ -41,17 +41,17 @@ export default function DiscordCallbackPage() {
   }, [acceptLogin]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="card w-full max-w-sm p-6 text-center">
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4 text-ink">
+      <div className="panel w-full max-w-sm p-8">
         {error ? (
           <>
-            <p className="mb-4 text-sm text-danger">{error}</p>
-            <a href="/" className="btn-primary">
+            <p className="mb-6 text-hp">{error}</p>
+            <a href="/" className="btn">
               Back
             </a>
           </>
         ) : (
-          <p className="text-sm text-muted">Connecting to Discord…</p>
+          <p className="text-muted">Connecting to Discord…</p>
         )}
       </div>
     </div>

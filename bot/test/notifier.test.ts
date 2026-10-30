@@ -1,8 +1,10 @@
 import { ChannelType, Collection } from 'discord.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../src/api.js';
+import type { WardenKilled } from '../src/events.js';
 import type { MonsterCatalog } from '../src/monsterCatalog.js';
 import { Notifier, type NotifierOptions } from '../src/notifier.js';
+import { buildSpawnMessage, withPresence, type Presence } from '../src/messages.js';
 import { postedAlert, spawnFixture } from './fixtures.js';
 
 const BOT_ID = 'bot-user';
@@ -12,23 +14,28 @@ function setup(
   history: ReturnType<typeof postedAlert>[] = [],
   recipients = [{ discord_user_id: '42', characters: [{ id: 'c1', name: 'Sir Tester' }] }],
 ) {
+  const byId = new Map<string, unknown>();
   const sent: { id: string; payload: any; edit: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> }[] = [];
   const channelMessages = {
     delete: vi.fn().mockResolvedValue(undefined),
     edit: vi.fn().mockResolvedValue(undefined),
-    fetch: vi.fn().mockResolvedValue(new Collection(history.map((m) => [m.id, m]))),
+    // fetch(id) -> one message from `byId`; fetch({ limit }) -> the channel history.
+    fetch: vi.fn(async (arg: unknown) =>
+      typeof arg === 'string' ? (byId.get(arg) ?? Promise.reject(new Error('Unknown Message'))) : new Collection(history.map((m) => [m.id, m])),
+    ),
   };
   const channel = {
     id: 'chan-1',
     name: 'wardens-monza',
     type: ChannelType.GuildText,
-    guild: { name: 'Guild' },
+    guild: { id: 'guild-1', name: 'Guild', members: { fetch: vi.fn(async (id: string) => ({ id })) } },
     send: vi.fn(async (payload: unknown) => {
       const message = { id: `msg-${sent.length + 1}`, payload, edit: vi.fn().mockResolvedValue(undefined), delete: vi.fn().mockResolvedValue(undefined) };
       sent.push(message);
       return message;
     }),
     isSendable: () => true,
+    isTextBased: () => true,
     messages: channelMessages,
   };
   const guild = { channels: { cache: new Collection([[channel.id, channel]]) } };
@@ -51,7 +58,7 @@ function setup(
     ...options,
   });
 
-  return { notifier, channel, channelMessages, user, api, sent };
+  return { notifier, channel, channelMessages, user, api, sent, byId };
 }
 
 function historyAlert(spawnId: string, expiresAt: string, author = BOT_ID) {
@@ -62,6 +69,32 @@ function historyAlert(spawnId: string, expiresAt: string, author = BOT_ID) {
   });
   return message as typeof message & { delete: ReturnType<typeof vi.fn>; edit: ReturnType<typeof vi.fn> };
 }
+
+/** A channel alert as discord.js returns it, with presence lists, that can be edited and replied to. */
+function liveAlert(id: string, spawn = spawnFixture(), presence: Presence = { onMyWay: [], onSite: [] }) {
+  const base = (buildSpawnMessage(spawn, { onMyWay: true }).embeds![0] as { toJSON(): any }).toJSON();
+  const embed = withPresence(base, presence).toJSON();
+  const notice = { delete: vi.fn().mockResolvedValue(undefined) };
+  return {
+    ...postedAlert(spawn, { onMyWay: true }),
+    id,
+    author: { id: BOT_ID },
+    embeds: [{ title: embed.title, fields: embed.fields, toJSON: () => embed }],
+    edit: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+    reply: vi.fn().mockResolvedValue(notice),
+    notice,
+  };
+}
+
+const killed = (overrides: Partial<WardenKilled> = {}): WardenKilled => ({
+  spawn_id: spawnFixture().spawn_id,
+  monster_id: 142,
+  server_name: 'Monza',
+  killed_by_discord_user_id: '7',
+  killed_by_name: null,
+  ...overrides,
+});
 
 describe('Notifier', () => {
   let notifier: Notifier | null = null;
@@ -89,7 +122,7 @@ describe('Notifier', () => {
     expect(alert!.payload.content).toBe('**Dragon Warden** <@42> <@43>');
     expect(alert!.payload.allowedMentions).toEqual({ parse: [], users: ['42', '43'] });
     expect(alert!.payload.embeds).toHaveLength(1);
-    expect(alert!.payload.components[0].toJSON().components.map((c: { label: string }) => c.label)).toEqual(['Killed', 'OMW', 'On site']);
+    expect(alert!.payload.components[0].toJSON().components.map((c: { label: string }) => c.label)).toEqual(['Killed', 'OMW', 'On site', 'Gone']);
     expect(ctx.user.send).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(999);
@@ -198,5 +231,143 @@ describe('Notifier', () => {
 
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(active.delete).toHaveBeenCalledOnce();
+  });
+
+  it('marks the alert dead, pings the players on the way and removes it only at expiry', async () => {
+    const ctx = setup();
+    notifier = ctx.notifier;
+    await notifier.onSpawned(spawnFixture());
+    const alert = liveAlert('msg-1', spawnFixture(), { onMyWay: ['42', '7'], onSite: ['43'] });
+    ctx.byId.set('msg-1', alert);
+
+    await notifier.onKilled(killed());
+
+    const edit = alert.edit.mock.calls[0]![0];
+    const embed = edit.embeds[0].toJSON();
+    expect(embed.title).toBe('💀 Dragon Warden');
+    expect(embed.description).toContain('reported by <@7>');
+    expect(embed.fields.map((f: { name: string }) => f.name)).toContain('On my way (2)');
+    expect(edit.components[0].toJSON().components.every((c: { disabled: boolean }) => c.disabled)).toBe(true);
+
+    const reply = alert.reply.mock.calls[0]![0];
+    expect(reply.content).toBe('💀 **Dragon Warden** is dead, reported by <@7>. No need to come: <@42> <@43>');
+    expect(reply.allowedMentions.users).toEqual(['42', '43']);
+    expect(ctx.channelMessages.delete).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(7 * 60_000);
+    expect(ctx.channelMessages.delete).toHaveBeenCalledWith('msg-1');
+    expect(alert.notice.delete).toHaveBeenCalledOnce();
+  });
+
+  it('names a web-app player by their Discord username and pings nobody when no one is on the way', async () => {
+    const ctx = setup();
+    notifier = ctx.notifier;
+    await notifier.onSpawned(spawnFixture());
+    const alert = liveAlert('msg-1');
+    ctx.byId.set('msg-1', alert);
+
+    await notifier.onKilled(killed({ killed_by_discord_user_id: null, killed_by_name: 'lukasz' }));
+
+    expect(alert.edit.mock.calls[0]![0].embeds[0].toJSON().description).toContain('reported by **lukasz**');
+    expect(alert.reply).not.toHaveBeenCalled();
+  });
+
+  it('announces a kill once when the event is redelivered', async () => {
+    const ctx = setup();
+    notifier = ctx.notifier;
+    await notifier.onSpawned(spawnFixture());
+    const alert = liveAlert('msg-1', spawnFixture(), { onMyWay: ['42'], onSite: [] });
+    ctx.byId.set('msg-1', alert);
+
+    await notifier.onKilled(killed());
+    await notifier.onKilled(killed());
+
+    expect(alert.edit).toHaveBeenCalledOnce();
+    expect(alert.reply).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the dead alert as it is at expiry when deletion is turned off', async () => {
+    const ctx = setup({ deleteExpired: false });
+    notifier = ctx.notifier;
+    await notifier.onSpawned(spawnFixture());
+    ctx.byId.set('msg-1', liveAlert('msg-1'));
+
+    await notifier.onKilled(killed());
+    await vi.advanceTimersByTimeAsync(7 * 60_000);
+
+    expect(ctx.channelMessages.edit).not.toHaveBeenCalled();
+    expect(ctx.channelMessages.delete).not.toHaveBeenCalled();
+  });
+
+  it('finds an alert from before a restart in the channel history when it is killed', async () => {
+    const target = liveAlert('old', spawnFixture({ spawn_id: 'old-run-spawn' }), { onMyWay: ['42'], onSite: [] });
+    const other = liveAlert('other', spawnFixture({ spawn_id: 'other-spawn' }));
+    const ctx = setup({}, [target, other] as never);
+    notifier = ctx.notifier;
+
+    await notifier.onKilled(killed({ spawn_id: 'old-run-spawn' }));
+
+    expect(target.edit).toHaveBeenCalledOnce();
+    expect(target.reply).toHaveBeenCalledOnce();
+    expect(target.delete).not.toHaveBeenCalled();
+    expect(other.edit).not.toHaveBeenCalled();
+  });
+});
+
+describe('Notifier with the bot on several servers', () => {
+  let notifier: Notifier | null = null;
+  afterEach(() => notifier?.dispose());
+
+  function twoServers(membersOfB: string[] = []) {
+    const guilds = ['guild-a', 'guild-b'].map((id) => {
+      const channel = {
+        id: `chan-${id}`,
+        name: 'wardens-monza',
+        type: ChannelType.GuildText,
+        guild: {
+          id,
+          name: id,
+          members: { fetch: vi.fn(async (userId: string) => (id === 'guild-a' || membersOfB.includes(userId) ? { id: userId } : Promise.reject(new Error('Unknown Member')))) },
+        },
+        send: vi.fn().mockResolvedValue({ id: `msg-${id}`, edit: vi.fn(), delete: vi.fn() }),
+      };
+      return { id, channel, guild: { channels: { cache: new Collection([[channel.id, channel]]) } } };
+    });
+    const client = { user: { id: BOT_ID }, guilds: { cache: new Collection(guilds.map((g) => [g.id, g.guild])) } };
+    const api = { getRecipients: vi.fn().mockResolvedValue([]) };
+    notifier = new Notifier(client as never, api as unknown as ApiClient, { remember: vi.fn() } as unknown as MonsterCatalog, {
+      channelPrefix: 'wardens-',
+      directMessages: false,
+      deleteExpired: true,
+      pingCleanupMs: 1_000,
+    });
+    return { notifier, a: guilds[0]!.channel, b: guilds[1]!.channel };
+  }
+
+  it('posts a /report only on the server it was used in', async () => {
+    const { notifier, a, b } = twoServers();
+
+    await notifier.onSpawned(spawnFixture({ discord_guild_id: 'guild-b' }));
+
+    expect(b.send).toHaveBeenCalledOnce();
+    expect(a.send).not.toHaveBeenCalled();
+  });
+
+  it('posts a web report on the servers the reporter is a member of', async () => {
+    const { notifier, a, b } = twoServers();
+
+    await notifier.onSpawned(spawnFixture({ reported_by_discord_user_id: '42' }));
+
+    expect(a.send).toHaveBeenCalledOnce();
+    expect(b.send).not.toHaveBeenCalled();
+  });
+
+  it('posts a web report of a player without Discord on every server', async () => {
+    const { notifier, a, b } = twoServers();
+
+    await notifier.onSpawned(spawnFixture());
+
+    expect(a.send).toHaveBeenCalledOnce();
+    expect(b.send).toHaveBeenCalledOnce();
   });
 });

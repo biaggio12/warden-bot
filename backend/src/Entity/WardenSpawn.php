@@ -13,7 +13,9 @@ use Symfony\Component\Uid\Uuid;
 #[ORM\Index(name: 'idx_warden_spawns_server_name', columns: ['server_name'])]
 class WardenSpawn
 {
-    public const DEFAULT_TTL_MINUTES = 7;
+    public const DEFAULT_TTL_MINUTES = 8;
+    /** A Warden disappears on its own 10 minutes after it shows up. */
+    public const MAX_TTL_MINUTES = 10;
 
     #[ORM\Id]
     #[ORM\Column(type: 'uuid', unique: true)]
@@ -39,6 +41,10 @@ class WardenSpawn
     #[ORM\JoinColumn(name: 'reported_by_user_id', nullable: false)]
     private User $reportedBy;
 
+    /** Discord server the report came from (/report); the alert is posted there only. */
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $discordGuildId;
+
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
@@ -57,7 +63,9 @@ class WardenSpawn
         \DateTimeImmutable $createdAt = new \DateTimeImmutable(),
         ?string $city = null,
         ?string $additionalInfo = null,
+        ?string $discordGuildId = null,
     ) {
+        $this->discordGuildId = $discordGuildId;
         $this->id = Uuid::v7();
         $this->monster = $monster;
         $this->serverName = $serverName;
@@ -100,6 +108,11 @@ class WardenSpawn
         return $this->additionalInfo;
     }
 
+    public function getDiscordGuildId(): ?string
+    {
+        return $this->discordGuildId;
+    }
+
     public function getReportedBy(): User
     {
         return $this->reportedBy;
@@ -118,5 +131,16 @@ class WardenSpawn
     public function getStatus(): WardenSpawnStatus
     {
         return $this->status;
+    }
+
+    public function isActive(\DateTimeImmutable $now): bool
+    {
+        return WardenSpawnStatus::Active === $this->status && $this->expiresAt > $now;
+    }
+
+    /** Someone killed the Warden before its time ran out; the alert is taken down. */
+    public function markKilled(): void
+    {
+        $this->status = WardenSpawnStatus::Killed;
     }
 }

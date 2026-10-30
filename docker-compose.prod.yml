@@ -15,12 +15,16 @@ x-php-prod: &php-prod
 services:
   php:
     <<: *php-prod
+    # !reset does not survive the YAML merge key above, so it is repeated here.
+    volumes: !reset []
     environment:
       APP_ENV: prod
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-prod}
 
   worker:
     <<: *php-prod
+    # !reset does not survive the YAML merge key above, so it is repeated here.
+    volumes: !reset []
     environment:
       APP_ENV: prod
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-prod}

@@ -24,7 +24,7 @@ export default function DiscordButton({ mode, label, after }: { mode: DiscordAut
     <>
       <button
         type="button"
-        className="btn w-full bg-[#5865F2] text-white shadow-sm hover:bg-[#4752c4] active:translate-y-px"
+        className="btn w-full bg-discord text-discord-ink hover:bg-discord-deep"
         onClick={() => startDiscordAuth(url, mode)}
       >
         <DiscordLogo />

@@ -1,6 +1,7 @@
 import { sentryEnabled } from './instrument.js';
 import * as Sentry from '@sentry/node';
 import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
+import { AlertPresence } from './alertPresence.js';
 import { ApiClient } from './api.js';
 import { loadConfig, type Config } from './config.js';
 import { EventConsumer } from './consumer.js';
@@ -31,18 +32,21 @@ async function main(): Promise<void> {
     console.warn('[discord] DISCORD_TOKEN is empty - running in dry-run mode (events are only logged)');
   }
 
+  const presence = new AlertPresence();
   const notifier = new Notifier(client, api, catalog, {
     channelPrefix: config.channelPrefix,
     directMessages: config.directMessages,
     deleteExpired: config.deleteExpired,
     pingCleanupMs: config.pingCleanupMs,
+    frontendUrl: config.frontendUrl,
+    presence,
   });
   console.info(
     `[notify] DMs ${config.directMessages ? 'enabled' : 'disabled'}; expired alerts are ${config.deleteExpired ? 'deleted' : 'kept with disabled buttons'}`,
   );
 
   if (client) {
-    const interactions = new InteractionHandler(api, catalog, config.frontendUrl, config.channelPrefix);
+    const interactions = new InteractionHandler(api, catalog, config.frontendUrl, config.channelPrefix, presence);
 
     client.once(Events.ClientReady, (ready) => {
       console.info(`[discord] Logged in as ${ready.user.tag} in ${ready.guilds.cache.size} guild(s)`);
@@ -61,6 +65,8 @@ async function main(): Promise<void> {
   const consumer = new EventConsumer(config.amqpUrl, async (event) => {
     if (event.event === 'warden.spawned') {
       await notifier.onSpawned(event.data);
+    } else if (event.event === 'warden.killed') {
+      await notifier.onKilled(event.data);
     } else {
       await notifier.onExpired(event.data);
     }
