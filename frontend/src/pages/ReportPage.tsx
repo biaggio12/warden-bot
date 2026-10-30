@@ -293,28 +293,31 @@ function ActiveSpawns({ server, spawns, onClosed }: ActiveSpawnsProps) {
                 </div>
                 <SegmentBar value={left} kind="hp" className="mt-3" />
                 {spawn.additional_info && <p className="mt-3 border-t-2 border-rule pt-2 text-sm whitespace-pre-line text-ink-2">{spawn.additional_info}</p>}
-                <div className="mt-3 flex items-center justify-end gap-2">
-                  {confirming === spawn.id ? (
-                    <>
-                      <span className="mr-auto text-sm text-muted">Killed already?</span>
-                      <button type="button" className="btn-quiet" onClick={() => setConfirming(null)} disabled={closing === spawn.id}>
-                        Cancel
+                {/* Only the reporter closes it: they are at the Warden and call the attack. */}
+                {spawn.is_yours && (
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    {confirming === spawn.id ? (
+                      <>
+                        <span className="mr-auto text-sm text-muted">Killed already?</span>
+                        <button type="button" className="btn-quiet" onClick={() => setConfirming(null)} disabled={closing === spawn.id}>
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="btn bg-hp text-hp-ink hover:bg-hp"
+                          onClick={() => close(spawn.id, spawn.monster.name)}
+                          disabled={closing === spawn.id}
+                        >
+                          {closing === spawn.id ? 'Closing…' : 'Yes, remove it'}
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="btn-quiet" onClick={() => setConfirming(spawn.id)}>
+                        Gone? Remove report
                       </button>
-                      <button
-                        type="button"
-                        className="btn bg-hp text-hp-ink hover:bg-hp"
-                        onClick={() => close(spawn.id, spawn.monster.name)}
-                        disabled={closing === spawn.id}
-                      >
-                        {closing === spawn.id ? 'Closing…' : 'Yes, remove it'}
-                      </button>
-                    </>
-                  ) : (
-                    <button type="button" className="btn-quiet" onClick={() => setConfirming(spawn.id)}>
-                      Gone? Remove report
-                    </button>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}

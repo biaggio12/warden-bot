@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AuthResponse, Character, DiscordConfig, Me, Monster, Stats, StatsPeriod, WardenSpawn } from './types';
+import type { AuthResponse, Character, DiscordConfig, Me, Monster, Player, Stats, StatsPeriod, WardenSpawn } from './types';
 
 export const endpoints = {
   login: (email: string, password: string) => api<AuthResponse>('POST', '/auth/login', { email, password }),
@@ -8,6 +8,8 @@ export const endpoints = {
   discordConfig: () => api<DiscordConfig>('GET', '/auth/discord'),
   /** Logged out: logs in (token returned). Logged in: links Discord to the account (no token). */
   discordAuth: (code: string) => api<AuthResponse | { user: Me }>('POST', '/auth/discord', { code }),
+  /** Admins only (403 for everyone else). */
+  players: () => api<{ users: Player[] }>('GET', '/admin/users').then((r) => r.users),
   discordLinkCode: () => api<{ code: string; expires_at: string }>('POST', '/me/discord-link-code'),
 
   worlds: () => api<{ worlds: string[] }>('GET', '/worlds').then((r) => r.worlds),

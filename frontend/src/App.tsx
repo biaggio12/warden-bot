@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
+import { endpoints } from './api/endpoints';
 import { useAuth } from './auth/AuthContext';
 import Brand from './components/Brand';
 import { LogOutIcon } from './components/Icons';
 import ThemeToggle from './components/ThemeToggle';
 import { DISCORD_CALLBACK_PATH } from './lib/discordAuth';
+import { useAsync } from './lib/useAsync';
 import BestiaryPage from './pages/BestiaryPage';
 import CharactersPage from './pages/CharactersPage';
 import DiscordCallbackPage from './pages/DiscordCallbackPage';
 import LoginPage from './pages/LoginPage';
+import PlayersPage from './pages/PlayersPage';
 import ReportPage from './pages/ReportPage';
 import StatsPage from './pages/StatsPage';
 
@@ -18,16 +21,23 @@ const TABS = [
   { id: 'characters', label: 'Characters', short: 'Characters' },
 ] as const;
 
-type TabId = (typeof TABS)[number]['id'];
+/** Only for admins (ADMIN_DISCORD_IDS); the API refuses everyone else anyway. */
+const ADMIN_TAB = { id: 'players', label: 'Players', short: 'Players' } as const;
+
+type TabId = (typeof TABS)[number]['id'] | typeof ADMIN_TAB.id;
 
 function tabFromHash(): TabId {
   const hash = window.location.hash.slice(1);
-  return TABS.some((t) => t.id === hash) ? (hash as TabId) : 'report';
+  return [...TABS, ADMIN_TAB].some((t) => t.id === hash) ? (hash as TabId) : 'report';
 }
 
 export default function App() {
   const { session, logout } = useAuth();
-  const [tab, setTab] = useState<TabId>(tabFromHash);
+  const [hashTab, setTab] = useState<TabId>(tabFromHash);
+  const me = useAsync(() => (session ? endpoints.me() : Promise.resolve(null)), [session?.token]);
+  const isAdmin = me.data?.is_admin === true;
+  const tabs = isAdmin ? [...TABS, ADMIN_TAB] : TABS;
+  const tab = hashTab === ADMIN_TAB.id && !isAdmin ? 'report' : hashTab;
 
   useEffect(() => {
     const onHash = () => setTab(tabFromHash());
@@ -46,7 +56,7 @@ export default function App() {
             <Brand />
           </a>
           <nav aria-label="Main" className="order-last -mx-2 flex w-full sm:mx-0 sm:gap-2 lg:order-none lg:w-auto lg:shrink-0">
-            {TABS.map(({ id, label, short }) => (
+            {tabs.map(({ id, label, short }) => (
               <a
                 key={id}
                 href={`#${id}`}
@@ -56,8 +66,9 @@ export default function App() {
                   tab === id ? 'border-accent text-accent-text' : 'border-transparent text-muted hover:text-ink'
                 }`}
               >
-                <span className="sm:hidden">{short}</span>
-                <span className="hidden sm:inline">{label}</span>
+                {/* Short on phones and on narrow desktops, where the tabs share the row with the brand. */}
+                <span className="sm:hidden lg:inline xl:hidden">{short}</span>
+                <span className="hidden sm:inline lg:hidden xl:inline">{label}</span>
               </a>
             ))}
           </nav>
@@ -68,7 +79,7 @@ export default function App() {
             </span>
             <button type="button" className="btn min-w-10 shrink-0 px-2 sm:px-3" onClick={logout} title="Log out">
               <LogOutIcon />
-              <span className="hidden sm:inline">Log out</span>
+              <span className="hidden sm:inline lg:hidden xl:inline">Log out</span>
             </button>
           </div>
         </div>
@@ -78,6 +89,7 @@ export default function App() {
         {tab === 'bestiary' && <BestiaryPage />}
         {tab === 'stats' && <StatsPage />}
         {tab === 'characters' && <CharactersPage />}
+        {tab === 'players' && <PlayersPage />}
       </main>
     </div>
   );

@@ -312,10 +312,11 @@ export function alertHeadline(spawn: WardenSpawned): string {
 /**
  * Splits the ping into messages that fit Discord's content limit: the first one is
  * the headline followed by as many mentions as fit, the rest carry only mentions.
+ * Role mentions come first, so they always land in the alert itself.
  */
-export function mentionChunks(headline: string, userIds: string[], limit = MAX_CONTENT_LENGTH): string[] {
+export function mentionChunks(headline: string, userIds: string[], limit = MAX_CONTENT_LENGTH, roleIds: string[] = []): string[] {
   const chunks: string[] = [headline];
-  for (const mention of userIds.map((id) => `<@${id}>`)) {
+  for (const mention of [...roleIds.map((id) => `<@&${id}>`), ...userIds.map((id) => `<@${id}>`)]) {
     const last = chunks[chunks.length - 1]!;
     if (last.length + 1 + mention.length <= limit) {
       chunks[chunks.length - 1] = `${last} ${mention}`;
@@ -356,6 +357,17 @@ export function reporterOf(spawn: WardenSpawned): string {
       : null;
   if (who && characters) return `${who} (${characters})`;
   return who ?? (characters || 'a player');
+}
+
+/**
+ * The reporter's Discord id from the alert's "Reported by" field: null when the reporter
+ * has no Discord account, undefined for alerts without the field (posted before it
+ * existed), which leaves the decision to the backend.
+ */
+export function reporterIdOfAlert(message: PostedMessage): string | null | undefined {
+  const field = message.embeds[0]?.toJSON().fields?.find((f) => f.name === 'Reported by');
+  if (!field) return undefined;
+  return /^<@!?(\d+)>/.exec(field.value)?.[1] ?? null;
 }
 
 /** Who closed a report: a Discord mention (shows their name, pings nobody inside an embed) or their username. */

@@ -36,6 +36,8 @@ export interface NotifierOptions {
   pingCleanupMs: number;
   /** Web app address, for the alert's link to the bestiary page. */
   frontendUrl?: string;
+  /** Roles pinged with every alert; a server without the role leaves it out. */
+  pingRoleIds?: string[];
   /** The presence lists the buttons keep (shared with the interaction handler). */
   presence?: AlertPresence;
 }
@@ -148,11 +150,13 @@ export class Notifier {
    * Sends the alert with the mentions in its content (that is what pings people), then
    * after pingCleanupMs edits the content down to the headline. Mentions that do not
    * fit into one message go into extra messages, which are deleted at that point.
+   * Configured roles are pinged too, on the servers that have them.
    */
   private async postAlert(channel: TextChannel, spawn: WardenSpawned, mentionIds: string[]): Promise<void> {
     const headline = alertHeadline(spawn);
-    const [first, ...overflow] = mentionChunks(headline, mentionIds);
-    const allowedMentions = { parse: [], users: mentionIds };
+    const roleIds = (this.options.pingRoleIds ?? []).filter((id) => channel.guild.roles.cache.has(id));
+    const [first, ...overflow] = mentionChunks(headline, mentionIds, undefined, roleIds);
+    const allowedMentions = { parse: [], users: mentionIds, roles: roleIds };
 
     let alert: Message;
     try {
@@ -172,7 +176,7 @@ export class Notifier {
       }
     }
 
-    if (mentionIds.length > 0) {
+    if (mentionIds.length > 0 || roleIds.length > 0) {
       this.schedule(this.options.pingCleanupMs, async () => {
         await ignoreUnknownMessage(alert.edit({ content: headline }), 'strip pings from');
         await Promise.all(extra.map((message) => ignoreUnknownMessage(message.delete(), 'delete ping message')));

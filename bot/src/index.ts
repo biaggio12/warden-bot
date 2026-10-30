@@ -39,6 +39,7 @@ async function main(): Promise<void> {
     deleteExpired: config.deleteExpired,
     pingCleanupMs: config.pingCleanupMs,
     frontendUrl: config.frontendUrl,
+    pingRoleIds: config.pingRoleIds,
     presence,
   });
   console.info(

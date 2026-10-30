@@ -36,11 +36,11 @@ final class WardenSpawnController extends AbstractController
     }
 
     #[Route('', name: 'api_warden_spawns_list', methods: ['GET'])]
-    public function list(#[MapQueryParameter('server_name')] ?string $serverName = null): JsonResponse
+    public function list(#[CurrentUser] User $user, #[MapQueryParameter('server_name')] ?string $serverName = null): JsonResponse
     {
         return $this->json([
             'warden_spawns' => array_map(
-                fn (WardenSpawn $spawn): array => Json::wardenSpawn($spawn, $this->reporters->of($spawn)),
+                fn (WardenSpawn $spawn): array => Json::wardenSpawn($spawn, $this->reporters->of($spawn), $user),
                 $this->spawns->findActive($serverName, $this->clock->now()),
             ),
         ]);
@@ -74,7 +74,7 @@ final class WardenSpawnController extends AbstractController
         $reportedBy = $this->reporters->of($spawn);
         $bus->dispatch(WardenSpawnedEvent::fromSpawn($spawn, $reportedBy));
 
-        return $this->json(Json::wardenSpawn($spawn, $reportedBy), 201);
+        return $this->json(Json::wardenSpawn($spawn, $reportedBy, $user), 201);
     }
 
     /**
@@ -90,6 +90,10 @@ final class WardenSpawnController extends AbstractController
         LoggerInterface $logger,
     ): JsonResponse {
         $spawn = $this->spawns->findByIdString($id) ?? throw $this->createNotFoundException('Report not found.');
+        // The reporter is the one at the Warden: they call the attack, so they say when it is over.
+        if (!$spawn->isReportedBy($user)) {
+            return Problem::response(403, 'Only the player who reported this Warden can mark it as gone.');
+        }
         if (!$spawn->isActive($this->clock->now())) {
             return Problem::response(409, 'This report is no longer active.');
         }
@@ -104,6 +108,6 @@ final class WardenSpawnController extends AbstractController
             'world' => $spawn->getServerName(),
         ]);
 
-        return $this->json(Json::wardenSpawn($spawn, $this->reporters->of($spawn)));
+        return $this->json(Json::wardenSpawn($spawn, $this->reporters->of($spawn), $user));
     }
 }

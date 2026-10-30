@@ -119,12 +119,25 @@ describe('ReportPage', () => {
     expect(await screen.findByRole('radio', { name: '8 min' })).toBeChecked();
   });
 
+  it('offers [Gone] only on your own reports', async () => {
+    const now = Date.now();
+    mocked.activeSpawns.mockResolvedValue([{
+      id: 's2', monster: { id: 7, name: 'Hydra' }, server_name: 'Monza', city: null, location_description: 'Hydra cave',
+      additional_info: null, status: 'ACTIVE' as const, reported_by: { characters: ['Someone'], discord_name: null }, is_yours: false,
+      created_at: new Date(now - 60_000).toISOString(), expires_at: new Date(now + 5 * 60_000).toISOString(),
+    }]);
+    renderPage();
+
+    expect(await screen.findByText('Someone')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Gone? Remove report' })).not.toBeInTheDocument();
+  });
+
   it('closes a report early after a second click', async () => {
     const user = userEvent.setup();
     const now = Date.now();
     const spawn = {
       id: 's1', monster: { id: 7, name: 'Hydra' }, server_name: 'Monza', city: 'Thais', location_description: 'Hydra cave',
-      additional_info: null, status: 'ACTIVE' as const, reported_by: { characters: ['Sir Tester'], discord_name: 'lukasz' },
+      additional_info: null, status: 'ACTIVE' as const, reported_by: { characters: ['Sir Tester'], discord_name: 'lukasz' }, is_yours: true,
       created_at: new Date(now - 60_000).toISOString(), expires_at: new Date(now + 5 * 60_000).toISOString(),
     };
     mocked.activeSpawns.mockResolvedValue([spawn]);

@@ -22,6 +22,8 @@ export interface WardenSpawn {
   additional_info: string | null;
   /** The reporter's characters on that world and Discord username; never their e-mail. */
   reported_by?: { characters: string[]; discord_name: string | null };
+  /** Only the reporter may mark it as gone. */
+  is_yours?: boolean;
   status: 'ACTIVE' | 'KILLED' | 'EXPIRED';
   created_at: string;
   expires_at: string;
@@ -34,6 +36,21 @@ export interface Me {
   display_name: string;
   discord_linked: boolean;
   discord_username: string | null;
+  /** Admins (ADMIN_DISCORD_IDS on the server) also get the Players tab. */
+  is_admin?: boolean;
+}
+
+/** One registered account in the admin's Players list. */
+export interface Player {
+  id: number;
+  email: string | null;
+  discord_username: string | null;
+  discord_linked: boolean;
+  created_at: string;
+  characters: { name: string; server_name: string }[];
+  reports: number;
+  last_report_at: string | null;
+  bestiary_marks: number;
 }
 
 export interface AuthResponse {

@@ -91,6 +91,7 @@ describe('mentionChunks', () => {
   it('puts the headline and mentions in one message when they fit', () => {
     expect(mentionChunks('**Hydra**', ['1', '2'])).toEqual(['**Hydra** <@1> <@2>']);
     expect(mentionChunks('**Hydra**', [])).toEqual(['**Hydra**']);
+    expect(mentionChunks('**Hydra**', ['1'], undefined, ['77'])).toEqual(['**Hydra** <@&77> <@1>']);
   });
 
   it('starts a new message when the limit would be exceeded', () => {

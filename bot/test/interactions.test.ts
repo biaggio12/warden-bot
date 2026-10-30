@@ -81,8 +81,8 @@ describe('[Killed] button', () => {
   });
 });
 
-function alertMessage(onMyWay: string[], onSite: string[] = []) {
-  const base = (buildSpawnMessage(spawnFixture(), { onMyWay: true }).embeds![0] as { toJSON(): APIEmbed }).toJSON();
+function alertMessage(onMyWay: string[], onSite: string[] = [], reporterId: string | null = null) {
+  const base = (buildSpawnMessage(spawnFixture({ reported_by_discord_user_id: reporterId }), { onMyWay: true }).embeds![0] as { toJSON(): APIEmbed }).toJSON();
   const embed = withPresence(base, { onMyWay, onSite }).toJSON();
   return { id: 'alert-1', embeds: [{ title: embed.title, toJSON: () => embed }], edit: vi.fn().mockResolvedValue(undefined) };
 }
@@ -223,13 +223,13 @@ describe('[Killed] takes the player off the presence lists', () => {
 });
 
 describe('[Gone] button', () => {
-  function click(customId: string) {
+  function click(customId: string, reporterId: string | null = '999000') {
     const api = { killSpawn: vi.fn().mockResolvedValue(undefined) } as unknown as ApiClient & { killSpawn: ReturnType<typeof vi.fn> };
     const handler = new InteractionHandler(api, {} as MonsterCatalog, 'http://panel');
     const interaction = {
       customId,
       user: { id: '999000' },
-      message: alertMessage([]),
+      message: alertMessage([], [], reporterId),
       deferred: false,
       replied: false,
       isAutocomplete: () => false,
@@ -256,6 +256,29 @@ describe('[Gone] button', () => {
     expect(reply.flags).toBe(MessageFlags.Ephemeral);
     expect(reply.content).toContain('**Dragon Warden**');
     expect(reply.components[0].toJSON().components[0].custom_id).toBe(goneButtonId('spawn-1', true));
+  });
+
+  it('tells other players that only the reporter can close it', async () => {
+    for (const reporterId of ['111222333444555666', null]) {
+      const { api, handler, interaction } = click(goneButtonId('spawn-1'), reporterId);
+
+      await handler.handle(interaction as never);
+
+      expect(api.killSpawn).not.toHaveBeenCalled();
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '⚠️ Only the player who reported this Warden can mark it as gone.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  });
+
+  it('shows the backend refusal on the confirm button (e.g. an old alert)', async () => {
+    const { api, handler, interaction } = click(goneButtonId('spawn-1', true));
+    api.killSpawn.mockRejectedValue(new ApiError(403, { detail: 'Only the player who reported this Warden can mark it as gone.' }));
+
+    await handler.handle(interaction as never);
+
+    expect(interaction.editReply).toHaveBeenCalledWith({ content: '⚠️ Only the player who reported this Warden can mark it as gone.', components: [] });
   });
 
   it('closes the report once confirmed', async () => {

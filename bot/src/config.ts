@@ -17,6 +17,8 @@ export interface Config {
   deleteExpired: boolean;
   /** Mentions are edited out of the alert after this delay. */
   pingCleanupMs: number;
+  /** Roles pinged with every alert, on the servers that have them (others skip them). */
+  pingRoleIds: string[];
 }
 
 function optional(name: string): string | null {
@@ -67,5 +69,9 @@ export function loadConfig(): Config {
     directMessages: flag('DISCORD_DM_ENABLED', false),
     deleteExpired: flag('DISCORD_DELETE_EXPIRED', true),
     pingCleanupMs: Number(optional('DISCORD_PING_CLEANUP_SECONDS') ?? 1) * 1000,
+    pingRoleIds: (optional('DISCORD_PING_ROLE_IDS') ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => /^\d{17,20}$/.test(id)),
   };
 }

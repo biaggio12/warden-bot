@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Entity\User;
 use App\Http\Json;
+use App\Security\AdminPolicy;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -17,9 +18,9 @@ final class AccountController extends AbstractController
     private const LINK_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
     #[Route('', name: 'api_me', methods: ['GET'])]
-    public function me(#[CurrentUser] User $user): JsonResponse
+    public function me(#[CurrentUser] User $user, AdminPolicy $admins): JsonResponse
     {
-        return $this->json(Json::user($user));
+        return $this->json(Json::user($user) + ['is_admin' => $admins->isAdmin($user)]);
     }
 
     /**

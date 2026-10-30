@@ -21,12 +21,16 @@ import {
   parseGoneCustomId,
   parseKillCustomId,
   presenceListOf,
+  reporterIdOfAlert,
   togglePresence,
   type PresenceList,
   type KillTarget,
 } from './messages.js';
 import type { MonsterCatalog } from './monsterCatalog.js';
 import { ReportCommand, UserError, reportCommand } from './reportCommand.js';
+
+/** Same words as the backend's 403, for the answer given before asking it. */
+const ONLY_THE_REPORTER = 'Only the player who reported this Warden can mark it as gone.';
 
 export const commands = [
   new SlashCommandBuilder()
@@ -129,11 +133,17 @@ export class InteractionHandler {
 
   /**
    * [Gone] on the alert asks first (closing a report affects everyone); the confirm
-   * button in that ephemeral reply closes it. The backend then publishes warden.killed
+   * button in that ephemeral reply closes it. Only the reporter may: they are at the
+   * Warden and call the attack (the backend enforces it, this only answers at once). The backend then publishes warden.killed
    * and the notifier marks the alert dead and pings the players on the way.
    */
   private async handleGone(interaction: ButtonInteraction, gone: { spawnId: string; confirm: boolean }): Promise<void> {
     if (!gone.confirm) {
+      const reporter = reporterIdOfAlert(interaction.message);
+      if (reporter !== undefined && reporter !== interaction.user.id) {
+        await interaction.reply({ content: `⚠️ ${ONLY_THE_REPORTER}`, flags: MessageFlags.Ephemeral });
+        return;
+      }
       await interaction.reply({ ...goneConfirmation(gone.spawnId, monsterNameOfAlert(interaction.message)), flags: MessageFlags.Ephemeral });
       return;
     }
@@ -212,7 +222,7 @@ export class InteractionHandler {
         return `Your Discord account is not linked. Log in to the web app (${this.frontendUrl}) and link it, or generate a code there and use \`/link\`.`;
       }
       if (error.status === 403) {
-        return 'This character does not belong to your account.';
+        return error.problem?.detail ? `⚠️ ${error.problem.detail}` : 'This character does not belong to your account.';
       }
       const violation = error.problem?.violations?.[0]?.title;
       if (error.status < 500 && (violation ?? error.problem?.detail)) {

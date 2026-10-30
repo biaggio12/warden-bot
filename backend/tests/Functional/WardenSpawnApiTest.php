@@ -253,9 +253,8 @@ final class WardenSpawnApiTest extends ApiTestCase
 
     public function testClosesReportAsKilledAndPublishesEvent(): void
     {
-        $reporter = $this->createUser();
         $closer = $this->createUser('closer@example.com', discordUserId: '223456789012345678');
-        $spawn = $this->createSpawn($reporter);
+        $spawn = $this->createSpawn($closer);
 
         $data = $this->requestJson('POST', \sprintf('/api/v1/warden-spawns/%s/kill', $spawn->getId()), null, $this->tokenFor($closer));
 
@@ -272,6 +271,29 @@ final class WardenSpawnApiTest extends ApiTestCase
 
         $list = $this->requestJson('GET', '/api/v1/warden-spawns?server_name=Monza', null, $this->tokenFor($closer));
         self::assertSame([], $list['warden_spawns']);
+    }
+
+    public function testOnlyTheReporterCanCloseTheReport(): void
+    {
+        $reporter = $this->createUser();
+        $other = $this->createUser('other@example.com');
+        $spawn = $this->createSpawn($reporter);
+        [$reporterToken, $otherToken] = [$this->tokenFor($reporter), $this->tokenFor($other)];
+
+        $data = $this->requestJson('POST', \sprintf('/api/v1/warden-spawns/%s/kill', $spawn->getId()), null, $otherToken);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame('Only the player who reported this Warden can mark it as gone.', $data['detail']);
+        /** @var InMemoryTransport $transport */
+        $transport = static::getContainer()->get('messenger.transport.discord_events');
+        self::assertSame([], $transport->getSent());
+
+        $list = $this->requestJson('GET', '/api/v1/warden-spawns?server_name=Monza', null, $otherToken);
+        self::assertCount(1, $list['warden_spawns'], 'still active');
+        self::assertFalse($list['warden_spawns'][0]['is_yours']);
+
+        $mine = $this->requestJson('GET', '/api/v1/warden-spawns?server_name=Monza', null, $reporterToken);
+        self::assertTrue($mine['warden_spawns'][0]['is_yours']);
     }
 
     public function testCannotCloseAReportTwice(): void

@@ -9,6 +9,8 @@ import { postedAlert, spawnFixture } from './fixtures.js';
 
 const BOT_ID = 'bot-user';
 
+const GUILD_ROLE = '1528881722345652365';
+
 function setup(
   options: Partial<NotifierOptions> = {},
   history: ReturnType<typeof postedAlert>[] = [],
@@ -28,7 +30,12 @@ function setup(
     id: 'chan-1',
     name: 'wardens-monza',
     type: ChannelType.GuildText,
-    guild: { id: 'guild-1', name: 'Guild', members: { fetch: vi.fn(async (id: string) => ({ id })) } },
+    guild: {
+      id: 'guild-1',
+      name: 'Guild',
+      members: { fetch: vi.fn(async (id: string) => ({ id })) },
+      roles: { cache: new Collection([[GUILD_ROLE, { id: GUILD_ROLE }]]) },
+    },
     send: vi.fn(async (payload: unknown) => {
       const message = { id: `msg-${sent.length + 1}`, payload, edit: vi.fn().mockResolvedValue(undefined), delete: vi.fn().mockResolvedValue(undefined) };
       sent.push(message);
@@ -120,7 +127,7 @@ describe('Notifier', () => {
     const [alert] = ctx.sent;
     expect(ctx.sent).toHaveLength(1);
     expect(alert!.payload.content).toBe('**Dragon Warden** <@42> <@43>');
-    expect(alert!.payload.allowedMentions).toEqual({ parse: [], users: ['42', '43'] });
+    expect(alert!.payload.allowedMentions).toEqual({ parse: [], users: ['42', '43'], roles: [] });
     expect(alert!.payload.embeds).toHaveLength(1);
     expect(alert!.payload.components[0].toJSON().components.map((c: { label: string }) => c.label)).toEqual(['Killed', 'OMW', 'On site', 'Gone']);
     expect(ctx.user.send).not.toHaveBeenCalled();
@@ -128,6 +135,20 @@ describe('Notifier', () => {
     await vi.advanceTimersByTimeAsync(999);
     expect(alert!.edit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
+    expect(alert!.edit).toHaveBeenCalledWith({ content: '**Dragon Warden**' });
+  });
+
+  it('pings the configured role on a server that has it, then edits it out too', async () => {
+    const ctx = setup({ pingRoleIds: [GUILD_ROLE, '999999999999999999'] }, [], []);
+    notifier = ctx.notifier;
+
+    await notifier.onSpawned(spawnFixture());
+
+    const [alert] = ctx.sent;
+    // The other role does not exist on this server: left out, never shown as @deleted-role.
+    expect(alert!.payload.content).toBe(`**Dragon Warden** <@&${GUILD_ROLE}>`);
+    expect(alert!.payload.allowedMentions).toEqual({ parse: [], users: [], roles: [GUILD_ROLE] });
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(alert!.edit).toHaveBeenCalledWith({ content: '**Dragon Warden**' });
   });
 
@@ -328,6 +349,7 @@ describe('Notifier with the bot on several servers', () => {
           id,
           name: id,
           members: { fetch: vi.fn(async (userId: string) => (id === 'guild-a' || membersOfB.includes(userId) ? { id: userId } : Promise.reject(new Error('Unknown Member')))) },
+          roles: { cache: new Collection() },
         },
         send: vi.fn().mockResolvedValue({ id: `msg-${id}`, edit: vi.fn(), delete: vi.fn() }),
       };

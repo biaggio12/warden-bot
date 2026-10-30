@@ -24,7 +24,9 @@ którym ten potwór jest jeszcze potrzebny. Potwora da się odhaczyć jednym kli
   i publikuje `WardenSpawnedEvent` przez Symfony Messenger (transport AMQP, serializer JSON).
 - **Bot** odbiera zdarzenie i publikuje alert na kanale `#wardens-<świat>` (np. `#wardens-monza`)
   w każdej gildii, w której jest. Treść alertu to nazwa Wardena i wzmianki (`@`) graczy, którym go
-  brakuje (połączony Discord, postać na tym świecie bez tego potwora, bez zgłaszającego). Po
+  brakuje (połączony Discord, postać na tym świecie bez tego potwora, bez zgłaszającego). Role z
+  `DISCORD_PING_ROLE_IDS` (ID po przecinku) są pingowane przy każdym alercie, ale tylko na serwerze,
+  który ma daną rolę. Rola musi być „mentionable” albo bot musi mieć *Mention @everyone, @here and All Roles*. Po
   `DISCORD_PING_CLEANUP_SECONDS` (domyślnie 1 s) bot edytuje treść tak, że zostaje sama nazwa
   Wardena. Powiadomienia już dotarły, a kanał zostaje czysty. Opcjonalnie (`DISCORD_DM_ENABLED=true`, domyślnie wyłączone)
   wysyła też DM graczom z połączonym Discordem i postacią na tym świecie, która **nie ma** jeszcze
@@ -102,7 +104,11 @@ Bez `DISCORD_TOKEN` bot działa w trybie **dry-run**: konsumuje zdarzenia i logu
 
 1. Utwórz aplikację na https://discord.com/developers/applications, w zakładce *Bot* wygeneruj token.
 2. Zaproś bota przez *OAuth2 → URL Generator* ze scope'ami `bot` i `applications.commands`
-   oraz uprawnieniami *Send Messages*, *Embed Links* i *Read Message History*.
+   oraz uprawnieniami *View Channels*, *Send Messages*, *Embed Links*, *Read Message History*
+   i *Mention @everyone, @here and All Roles* (`permissions=216064`; to ostatnie tylko dla pingu ról
+   z `DISCORD_PING_ROLE_IDS`, bez niego wystarczy `84992` i rola z „Allow anyone to @mention”), np.
+   `https://discord.com/oauth2/authorize?client_id=<DISCORD_APPLICATION_ID>&scope=bot+applications.commands&permissions=216064`.
+   Bot edytuje i usuwa tylko własne wiadomości, więc *Manage Messages* ani privileged intents nie są potrzebne.
 3. Na serwerze utwórz kanały tekstowe `#wardens-<świat>`, np. `#wardens-monza`.
 4. W `.env` ustaw `DISCORD_TOKEN`, `DISCORD_APPLICATION_ID` i (dla natychmiastowej rejestracji
    komend) `DISCORD_GUILD_ID`, potem `docker compose up -d bot`.
@@ -147,7 +153,9 @@ potwierdzenie, a po nim backend (`POST /api/v1/warden-spawns/{id}/kill`) ustawia
 wyłączone, listy OMW / On site zostają) i odpowiada na niego wiadomością pingującą graczy z tych list.
 Alert i ta odpowiedź znikają o pierwotnej porze wygaśnięcia. Zgłaszający jest pokazany jako wzmianka Discord
 albo nick Discord; e-mail konta nigdy nie trafia na Discorda. To samo robi przycisk „Gone? Remove report” przy aktywnym zgłoszeniu
-w aplikacji. Zamknąć zgłoszenie może każdy zalogowany gracz (na Discordzie: z podpiętym kontem), tak jak je zgłosić.
+w aplikacji. Zamknąć zgłoszenie może tylko gracz, który je zgłosił (to on jest na miejscu i daje znak do ataku).
+Backend odpowiada innym `403`; bot odmawia od razu po kliknięciu, czytając „Reported by” z alertu, a w aplikacji
+przycisk widzi tylko zgłaszający (pole `is_yours` w odpowiedzi API).
 
 ## API (`/api/v1`)
 

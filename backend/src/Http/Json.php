@@ -63,7 +63,7 @@ final class Json
      *
      * @return array<string, mixed>
      */
-    public static function wardenSpawn(WardenSpawn $spawn, array $reportedBy): array
+    public static function wardenSpawn(WardenSpawn $spawn, array $reportedBy, User $viewer): array
     {
         return [
             'id' => $spawn->getId()->toRfc4122(),
@@ -77,6 +77,8 @@ final class Json
             'location_description' => $spawn->getLocationDescription(),
             'additional_info' => $spawn->getAdditionalInfo(),
             'reported_by' => $reportedBy,
+            // Only the reporter may mark it as gone.
+            'is_yours' => $spawn->isReportedBy($viewer),
             'status' => $spawn->getStatus()->value,
             'created_at' => self::date($spawn->getCreatedAt()),
             'expires_at' => self::date($spawn->getExpiresAt()),

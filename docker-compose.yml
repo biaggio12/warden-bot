@@ -19,6 +19,8 @@ x-php: &php
     DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@database:5432/${POSTGRES_DB:-warden}?serverVersion=17&charset=utf8
     MESSENGER_EVENTS_DSN: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/%2f/warden_events
     BOT_API_TOKEN: ${BOT_API_TOKEN:-dev-bot-token-change-me}
+    # Discord ids (comma separated) of the accounts that see the admin Players list
+    ADMIN_DISCORD_IDS: ${ADMIN_DISCORD_IDS:-}
     CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$}
     TIBIA_WORLDS: ${TIBIA_WORLDS:-}
     # "Log in with Discord": OAuth2 client of the same Discord application as the bot
@@ -124,6 +126,7 @@ services:
       DISCORD_DELETE_EXPIRED: ${DISCORD_DELETE_EXPIRED:-true}
       # Seconds the @mentions stay in an alert before it is edited down to the Warden's name
       DISCORD_PING_CLEANUP_SECONDS: ${DISCORD_PING_CLEANUP_SECONDS:-1}
+      DISCORD_PING_ROLE_IDS: ${DISCORD_PING_ROLE_IDS:-}
       # Sentry: own project via SENTRY_DSN_BOT, otherwise the backend's DSN
       SENTRY_DSN: ${SENTRY_DSN_BOT:-${SENTRY_DSN:-}}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}

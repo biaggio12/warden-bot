@@ -118,6 +118,11 @@ class WardenSpawn
         return $this->reportedBy;
     }
 
+    public function isReportedBy(User $user): bool
+    {
+        return null !== $user->getId() && $this->reportedBy->getId() === $user->getId();
+    }
+
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
