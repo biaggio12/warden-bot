@@ -164,6 +164,33 @@ describe('ReportPage', () => {
     expect(await screen.findByRole('button', { name: 'Report' })).toBeInTheDocument();
   });
 
+  it('asks before reporting a Warden that is already reported, and reports it when confirmed', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    mocked.activeSpawns.mockResolvedValue([{
+      id: 's9', monster: { id: 7, name: 'Hydra' }, server_name: 'Monza', city: 'Thais', location_description: 'Hydra cave',
+      additional_info: null, status: 'ACTIVE' as const, reported_by: { characters: ['Someone'], discord_name: null }, is_yours: false,
+      created_at: new Date(now - 60_000).toISOString(), expires_at: new Date(now + 5 * 60_000).toISOString(),
+    }]);
+    mocked.reportSpawn.mockResolvedValue({
+      id: 's1', monster: { id: 7, name: 'Hydra' }, server_name: 'Monza', city: 'Venore', location_description: 'Other cave',
+      additional_info: null, status: 'ACTIVE', created_at: '2026-10-29T12:00:00Z', expires_at: '2026-10-29T12:07:00Z',
+    });
+    renderPage();
+    await screen.findByText('Someone');
+
+    await user.type(screen.getByPlaceholderText(/Start typing/), 'Hydra');
+    await user.click(await screen.findByRole('option', { name: /Hydra/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'City' }), 'Venore');
+    await user.type(screen.getByRole('textbox', { name: 'Spot' }), 'Other cave');
+    await user.click(screen.getByRole('button', { name: 'Report' }));
+
+    expect(mocked.reportSpawn).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Hydra is already reported on Monza: Thais, Hydra cave');
+    await user.click(screen.getByRole('button', { name: 'It is another one, report it' }));
+    expect(mocked.reportSpawn).toHaveBeenCalledWith(expect.objectContaining({ monster_id: 7, location_description: 'Other cave' }));
+  });
+
   it('defaults the TTL to 8 minutes', async () => {
     renderPage();
     expect(await screen.findByRole('radio', { name: '8 min' })).toBeChecked();

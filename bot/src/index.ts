@@ -9,6 +9,7 @@ import { startHealthServer } from './health.js';
 import { InteractionHandler, commands } from './interactions.js';
 import { MonsterCatalog } from './monsterCatalog.js';
 import { Notifier } from './notifier.js';
+import { Watchdog } from './watchdog.js';
 
 async function registerCommands(config: Config, applicationId: string): Promise<void> {
   const rest = new REST().setToken(config.discordToken!);
@@ -86,8 +87,20 @@ async function main(): Promise<void> {
   }
   await consumer.start();
 
+  const watchdog = new Watchdog(
+    () => consumer.connected && (client ? client.isReady() : true),
+    (downForMs) => {
+      const message = `[watchdog] Cut off from ${consumer.connected ? 'Discord' : 'RabbitMQ'} for ${Math.round(downForMs / 60_000)} min, restarting`;
+      console.error(message);
+      Sentry.captureMessage(message, 'fatal');
+      void Sentry.close(2000).finally(() => process.exit(1));
+    },
+  );
+  watchdog.start();
+
   const shutdown = async (signal: string): Promise<void> => {
     console.info(`[bot] ${signal} received, shutting down`);
+    watchdog.stop();
     notifier.dispose();
     health.close();
     await consumer.stop();

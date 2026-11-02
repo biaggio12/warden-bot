@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { endpoints } from '../api/endpoints';
-import type { Player } from '../api/types';
+import type { AdminActionEntry, Player } from '../api/types';
 import AddCharacterForm from '../components/AddCharacterForm';
 import { ChevronIcon, TrashIcon } from '../components/Icons';
 import { PageHead } from '../components/PageHead';
@@ -19,6 +19,7 @@ function matches(player: Player, query: string): boolean {
 /** Admins only: every registered account, newest first, with what it has done so far, and the tools to manage it. */
 export default function PlayersPage() {
   const players = useAsync(endpoints.players, []);
+  const history = useAsync(endpoints.admin.actions, []);
   const [query, setQuery] = useState('');
   const list = players.data;
 
@@ -65,15 +66,63 @@ export default function PlayersPage() {
                 <PlayerRow
                   key={player.id}
                   player={player}
-                  onChange={(next) => players.setData((all) => all?.map((p) => (p.id === next.id ? next : p)) ?? all)}
-                  onDeleted={() => players.setData((all) => all?.filter((p) => p.id !== player.id) ?? all)}
+                  onChange={(next) => {
+                    players.setData((all) => all?.map((p) => (p.id === next.id ? next : p)) ?? all);
+                    history.reload();
+                  }}
+                  onDeleted={() => {
+                    players.setData((all) => all?.filter((p) => p.id !== player.id) ?? all);
+                    history.reload();
+                  }}
                 />
               ))}
             </ul>
           )}
         </section>
       )}
+
+      {history.data && <AdminHistory actions={history.data} />}
     </>
+  );
+}
+
+const ACTION_LABELS: Record<AdminActionEntry['action'], string> = {
+  block: 'blocked',
+  unblock: 'unblocked',
+  unlink_discord: 'unlinked Discord of',
+  delete: 'deleted the account of',
+  add_character: 'added a character to',
+  delete_character: 'deleted a character of',
+  reset_password: 'reset the password of',
+};
+
+const timeFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/** Who did what to which account, newest first (the last 50). */
+function AdminHistory({ actions }: { actions: AdminActionEntry[] }) {
+  return (
+    <section className="mt-10" aria-labelledby="admin-history">
+      <h2 id="admin-history" className="mb-4">
+        Admin history
+      </h2>
+      {actions.length === 0 ? (
+        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">No admin actions yet.</p>
+      ) : (
+        <ol className="panel divide-y-2 divide-rule">
+          {actions.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-5 py-2.5 text-sm">
+              <time dateTime={a.created_at} className="w-32 shrink-0 text-muted tabular-nums">
+                {timeFormat.format(new Date(a.created_at))}
+              </time>
+              <span className="min-w-0">
+                <strong>{a.admin}</strong> {ACTION_LABELS[a.action] ?? a.action} <strong>{a.player}</strong>
+                {a.details && <span className="text-muted">: {a.details}</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 
@@ -140,6 +189,7 @@ function ManagePanel({ id, player, onChange, onDeleted }: RowProps & { id: strin
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [newPassword, setNewPassword] = useState<string | null>(null);
   const name = nameOf(player);
 
   async function run(action: () => Promise<Player | void>, done: string) {
@@ -148,6 +198,20 @@ function ManagePanel({ id, player, onChange, onDeleted }: RowProps & { id: strin
       const next = await action();
       if (next) onChange(next);
       toast(done, 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetPassword() {
+    if (!window.confirm(`Reset the password of ${name}? They will be logged out everywhere.`)) return;
+    setBusy(true);
+    try {
+      const { password, user } = await endpoints.admin.resetPassword(player.id);
+      setNewPassword(password);
+      onChange(user);
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
@@ -244,6 +308,20 @@ function ManagePanel({ id, player, onChange, onDeleted }: RowProps & { id: strin
               >
                 Unlink Discord
               </button>
+            )}
+            {player.email && (
+              <button type="button" className="btn" disabled={busy} onClick={resetPassword}>
+                Reset password
+              </button>
+            )}
+            {newPassword && (
+              <div className="space-y-1.5 border-3 border-accent p-3 text-sm" role="status">
+                <p>
+                  New password for <strong>{name}</strong>. Pass it on privately; it is shown only once:
+                </p>
+                <code className="block bg-paper-2 px-3 py-2 font-mono text-base font-semibold select-all">{newPassword}</code>
+                <p className="text-muted">They can change it in the Characters tab.</p>
+              </div>
             )}
             {confirmDelete ? (
               <div className="space-y-2 border-3 border-hp p-3">

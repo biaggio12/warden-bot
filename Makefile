@@ -4,7 +4,7 @@ COMPOSE_PUBLIC = $(COMPOSE_PROD) -f docker-compose.public.yml
 PHP          = $(COMPOSE) exec php
 
 .DEFAULT_GOAL := help
-.PHONY: help init up down restart logs ps fixtures migrate test test-backend test-bot test-frontend shell prod-up prod-down public-up public-down
+.PHONY: help init up down restart logs ps fixtures migrate test test-backend test-bot test-frontend shell prod-up prod-down public-up public-down backup
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -61,3 +61,6 @@ public-up: ## Production build served publicly through the openGym Caddy (see do
 
 public-down: ## Stop the public stack
 	$(COMPOSE_PUBLIC) down
+
+backup: ## Gzipped database dump to ~/warden-backups (keeps the newest 14)
+	scripts/backup-db.sh

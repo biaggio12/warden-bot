@@ -10,7 +10,7 @@ vi.mock('../api/endpoints', () => ({
   endpoints: {
     players: vi.fn(),
     worlds: vi.fn(),
-    admin: { block: vi.fn(), unblock: vi.fn(), unlinkDiscord: vi.fn(), deleteUser: vi.fn(), addCharacter: vi.fn(), deleteCharacter: vi.fn() },
+    admin: { block: vi.fn(), unblock: vi.fn(), unlinkDiscord: vi.fn(), deleteUser: vi.fn(), addCharacter: vi.fn(), deleteCharacter: vi.fn(), resetPassword: vi.fn(), actions: vi.fn() },
   },
 }));
 
@@ -36,6 +36,7 @@ describe('PlayersPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(endpoints.worlds).mockResolvedValue(['Monza', 'Secura']);
+    vi.mocked(endpoints.admin.actions).mockResolvedValue([]);
   });
 
   it('lists every account with its Discord, characters and activity', async () => {
@@ -119,5 +120,34 @@ describe('PlayersPage', () => {
 
     expect(endpoints.admin.addCharacter).toHaveBeenCalledWith(2, 'New Knight', 'Monza');
     expect(await screen.findByText('New Knight (Monza)')).toBeInTheDocument();
+  });
+
+  it('resets a password and shows the new one once', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(endpoints.players).mockResolvedValue(players);
+    vi.mocked(endpoints.admin.resetPassword).mockResolvedValue({ password: 'abcDEF234xyz', user: players[0]! });
+    renderPage();
+
+    await user.click((await screen.findAllByRole('button', { name: 'Manage' }))[0]!);
+    await user.click(screen.getByRole('button', { name: 'Reset password' }));
+
+    expect(endpoints.admin.resetPassword).toHaveBeenCalledWith(2);
+    expect(await screen.findByText('abcDEF234xyz')).toBeInTheDocument();
+    expect(endpoints.admin.actions).toHaveBeenCalledTimes(2); // the history is reloaded
+  });
+
+  it('shows the admin history', async () => {
+    vi.mocked(endpoints.players).mockResolvedValue(players);
+    vi.mocked(endpoints.admin.actions).mockResolvedValue([
+      { id: 2, admin: 'Rival', player: 'spam@example.com', action: 'block', details: null, created_at: '2026-11-02T09:00:00Z' },
+      { id: 1, admin: 'Rival', player: 'lukasz@example.com', action: 'add_character', details: 'New Knight (Monza)', created_at: '2026-11-02T08:00:00Z' },
+    ]);
+    renderPage();
+
+    const history = await screen.findByRole('region', { name: 'Admin history' });
+    const items = within(history).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Rival blocked spam@example.com');
+    expect(items[1]).toHaveTextContent('Rival added a character to lukasz@example.com: New Knight (Monza)');
   });
 });

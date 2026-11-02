@@ -71,13 +71,23 @@ export default function ReportPage() {
     return () => clearInterval(interval);
   }, [spawns.reload]);
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
+  // Two players reporting the same Warden ping everyone twice; it is not blocked (there can
+  // be two of a kind on a world), but the second one is asked first.
+  const [duplicateOf, setDuplicateOf] = useState<WardenSpawn | null>(null);
+
+  async function onSubmit(event: FormEvent | null, confirmed = false) {
+    event?.preventDefault();
     // Block incomplete data before any HTTP request is made.
     if (!isValid || !monster) {
       setTouched({ server_name: true, monster_id: true, city: true, location_description: true, additional_info: true });
       return;
     }
+    const duplicate = (spawns.data ?? []).find((s) => s.monster.id === monster.id && new Date(s.expires_at).getTime() > Date.now());
+    if (duplicate && !confirmed) {
+      setDuplicateOf(duplicate);
+      return;
+    }
+    setDuplicateOf(null);
     setSubmitting(true);
     setServerErrors({});
     try {
@@ -149,6 +159,7 @@ export default function ReportPage() {
                 invalid={!!errorFor('monster_id')}
                 onChange={(m) => {
                   setMonster(m);
+                  setDuplicateOf(null);
                   setServerErrors(({ monster_id: _, ...rest }) => rest);
                 }}
               />
@@ -236,9 +247,28 @@ export default function ReportPage() {
             </Field>
           )}
 
-          <button type="submit" className="btn-primary min-h-12 px-10 text-base" disabled={!isValid || submitting}>
-            {submitting ? 'Sending…' : 'Report'}
-          </button>
+          {duplicateOf ? (
+            <div className="space-y-3 border-3 border-accent p-4" role="alert">
+              <p>
+                <strong>{duplicateOf.monster.name}</strong> is already reported on {duplicateOf.server_name}
+                {duplicateOf.city || duplicateOf.location_description ? ': ' : ''}
+                {[duplicateOf.city, duplicateOf.location_description].filter(Boolean).join(', ')}
+                {' '}({formatRemaining(duplicateOf.expires_at, Date.now())} left, by {reporterName(duplicateOf)}). Players were pinged already.
+              </p>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button type="button" className="btn-quiet" onClick={() => setDuplicateOf(null)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn-primary" disabled={submitting} onClick={() => onSubmit(null, true)}>
+                  It is another one, report it
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="submit" className="btn-primary min-h-12 px-10 text-base" disabled={!isValid || submitting}>
+              {submitting ? 'Sending…' : 'Report'}
+            </button>
+          )}
         </form>
 
         <ActiveSpawns

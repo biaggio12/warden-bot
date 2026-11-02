@@ -53,7 +53,9 @@ final class ExpireWardenSpawnsHandlerTest extends KernelTestCase
         $schedule = static::getContainer()->get(WardenTtlSchedule::class)->getSchedule();
         $messages = $schedule->getRecurringMessages();
 
-        self::assertCount(1, $messages);
+        self::assertCount(2, $messages);
         self::assertStringContainsString('60', (string) $messages[0]->getTrigger());
+        // Wrong-password records are purged hourly.
+        self::assertStringContainsString('1 hour', (string) $messages[1]->getTrigger());
     }
 }

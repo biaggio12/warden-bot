@@ -295,6 +295,27 @@ W `.env`: `FRONTEND_URL` i `VITE_API_URL` to adres publiczny, `CORS_ALLOW_ORIGIN
 `BOT_API_TOKEN` jest losowy. Logowanie przez Discord wymaga adresu
 `https://warden.23-88-19-218.sslip.io/auth/discord/callback` w Developer Portal → OAuth2 → Redirects.
 
+## Kopie zapasowe
+
+`scripts/backup-db.sh` (albo `make backup`) robi `pg_dump` działającej bazy do
+`~/warden-backups/warden-<data>.sql.gz`, sprawdza, że zrzut jest kompletny, i zostawia 14 najnowszych.
+Codziennie o 4:00 z crona:
+
+```
+0 4 * * * /ścieżka/do/repo/scripts/backup-db.sh >> $HOME/warden-backups/backup.log 2>&1
+```
+
+Kopie leżą na tym samym serwerze: warto je co jakiś czas kopiować gdzie indziej.
+
+Odtworzenie (nadpisuje bazę, najpierw zatrzymaj backend i bota):
+
+```
+docker compose stop php worker bot
+docker compose exec -T database sh -c 'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+zcat ~/warden-backups/warden-<data>.sql.gz | docker compose exec -T database sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1'
+make public-up
+```
+
 ## Założenia poza specyfikacją
 
 - **Autentykacja**: specyfikacja wymaga tokenu Bearer, ale nie mówi, skąd go wziąć. Dodano

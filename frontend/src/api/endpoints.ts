@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, Stats, StatsPeriod, WardenSpawn } from './types';
+import type { AdminActionEntry, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, Stats, StatsPeriod, WardenSpawn } from './types';
 
 export const endpoints = {
   login: (email: string, password: string) => api<AuthResponse>('POST', '/auth/login', { email, password }),
@@ -19,7 +19,12 @@ export const endpoints = {
     addCharacter: (id: number, name: string, serverName: string) =>
       api<Player>('POST', `/admin/users/${id}/characters`, { name, server_name: serverName }),
     deleteCharacter: (id: number, characterId: string) => api<Player>('DELETE', `/admin/users/${id}/characters/${characterId}`),
+    /** A new temporary password, returned once. */
+    resetPassword: (id: number) => api<{ password: string; user: Player }>('POST', `/admin/users/${id}/reset-password`),
+    actions: () => api<{ actions: AdminActionEntry[] }>('GET', '/admin/actions').then((r) => r.actions),
   },
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api<void>('PUT', '/me/password', { current_password: currentPassword, new_password: newPassword }),
   discordLinkCode: () => api<{ code: string; expires_at: string }>('POST', '/me/discord-link-code'),
 
   worlds: () => api<{ worlds: string[] }>('GET', '/worlds').then((r) => r.worlds),

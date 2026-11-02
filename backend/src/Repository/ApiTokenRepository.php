@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\ApiToken;
+use App\Entity\User;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -25,5 +26,15 @@ class ApiTokenRepository extends ServiceEntityRepository
             ->setParameter('hash', ApiToken::hash($plainToken))
             ->getQuery()
             ->getOneOrNullResult();
+    }
+
+    /** Logs the player out everywhere (but `except`, the session making the request). */
+    public function deleteAllOf(User $user, ?ApiToken $except = null): void
+    {
+        $qb = $this->createQueryBuilder('t')->delete()->where('t.user = :user')->setParameter('user', $user);
+        if (null !== $except) {
+            $qb->andWhere('t != :except')->setParameter('except', $except);
+        }
+        $qb->getQuery()->execute();
     }
 }

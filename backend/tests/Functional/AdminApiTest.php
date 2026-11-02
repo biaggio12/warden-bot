@@ -220,6 +220,61 @@ final class AdminApiTest extends ApiTestCase
         self::assertSame([], $row['characters']);
     }
 
+    public function testResetsThePasswordOfAnEmailAccount(): void
+    {
+        $admin = $this->createUser('admin@example.com', self::ADMIN_DISCORD_ID);
+        $player = $this->createUser('player@example.com');
+        $discordOnly = new User(null);
+        $discordOnly->linkDiscord('666666666666666666');
+        $this->em->persist($discordOnly);
+        $this->em->flush();
+        $playerToken = $this->tokenFor($player);
+        $token = $this->tokenFor($admin);
+        $this->grantAdmins();
+
+        $data = $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/reset-password', $player->getId()), null, $token);
+        self::assertResponseIsSuccessful();
+        self::assertMatchesRegularExpression('/^[a-km-zA-HJ-NP-Z2-9]{12}$/', $data['password']);
+        self::assertSame('player@example.com', $data['user']['email']);
+
+        // The old sessions are gone, the new password works.
+        $this->requestJson('GET', '/api/v1/me', null, $playerToken);
+        self::assertResponseStatusCodeSame(401);
+        $this->requestJson('POST', '/api/v1/auth/login', ['email' => 'player@example.com', 'password' => $data['password']]);
+        self::assertResponseIsSuccessful();
+
+        $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/reset-password', $discordOnly->getId()), null, $token);
+        self::assertResponseStatusCodeSame(409);
+        $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/reset-password', $admin->getId()), null, $token);
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testKeepsAHistoryOfAdminActions(): void
+    {
+        $admin = $this->createUser('admin@example.com', self::ADMIN_DISCORD_ID);
+        $player = $this->createUser('player@example.com');
+        $doomed = $this->createUser('doomed@example.com');
+        [$token, $playerToken] = [$this->tokenFor($admin), $this->tokenFor($player)];
+        $this->grantAdmins();
+
+        $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/characters', $player->getId()), ['name' => 'New Knight', 'server_name' => 'Monza'], $token);
+        $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/block', $player->getId()), null, $token);
+        $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/block', $admin->getId()), null, $token); // refused: not recorded
+        $this->requestJson('DELETE', \sprintf('/api/v1/admin/users/%d', $doomed->getId()), null, $token);
+
+        $data = $this->requestJson('GET', '/api/v1/admin/actions', null, $token);
+        self::assertResponseIsSuccessful();
+        self::assertSame([
+            ['admin@example.com', 'doomed@example.com', 'delete', null],
+            ['admin@example.com', 'player@example.com', 'block', null],
+            ['admin@example.com', 'player@example.com', 'add_character', 'New Knight (Monza)'],
+        ], array_map(static fn (array $a): array => [$a['admin'], $a['player'], $a['action'], $a['details']], $data['actions']));
+        self::assertMatchesRegularExpression('/Z$/', $data['actions'][0]['created_at']);
+
+        $this->requestJson('GET', '/api/v1/admin/actions', null, $playerToken);
+        self::assertResponseStatusCodeSame(401); // blocked
+    }
+
     /** The real list comes from ADMIN_DISCORD_IDS; the kernel is kept so the replacement survives requests. */
     private function grantAdmins(): void
     {

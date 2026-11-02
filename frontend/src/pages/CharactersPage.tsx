@@ -1,5 +1,6 @@
 import { endpoints } from '../api/endpoints';
 import AddCharacterForm from '../components/AddCharacterForm';
+import ChangePasswordForm from '../components/ChangePasswordForm';
 import DiscordLinkSteps from '../components/DiscordLinkSteps';
 import { CheckIcon, TrashIcon } from '../components/Icons';
 import { PageHead } from '../components/PageHead';
@@ -86,6 +87,14 @@ export default function CharactersPage() {
             )}
           </div>
         </aside>
+
+        {me.data?.email && (
+          <section className="panel p-5 lg:col-start-2" aria-labelledby="password-title">
+            <h2 id="password-title">Password</h2>
+            <p className="mt-1 mb-4 text-sm text-muted">For logging in with {me.data.email}.</p>
+            <ChangePasswordForm />
+          </section>
+        )}
       </div>
     </>
   );

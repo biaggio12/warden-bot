@@ -57,6 +57,16 @@ export interface Player {
   bestiary_marks: number;
 }
 
+/** One entry of the admin history in the Players tab. */
+export interface AdminActionEntry {
+  id: number;
+  admin: string;
+  player: string;
+  action: 'block' | 'unblock' | 'unlink_discord' | 'delete' | 'add_character' | 'delete_character' | 'reset_password';
+  details: string | null;
+  created_at: string;
+}
+
 export interface AuthResponse {
   token: string;
   expires_at: string;
