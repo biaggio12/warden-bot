@@ -70,4 +70,46 @@ final class InternalApiTest extends ApiTestCase
         $this->requestJson('POST', '/api/v1/internal/discord-links', ['code' => $code, 'discord_user_id' => '123456789012345678'], self::BOT_TOKEN);
         self::assertResponseStatusCodeSame(404, 'a code can be used only once');
     }
+
+    public function testKeepsTheFullPresenceListsOfEachAlert(): void
+    {
+        $user = $this->createUser(discordUserId: '100000000000000001');
+        $spawn = new WardenSpawn($this->createMonster(), 'Monza', 'Venore', $user);
+        $this->em->persist($spawn);
+        $this->em->flush();
+        $url = \sprintf('/api/v1/internal/warden-spawns/%s/presence/', $spawn->getId());
+        $ids = array_map(static fn (int $i): string => (string) (200000000000000000 + $i), range(1, 15));
+
+        self::assertSame(['on_my_way' => [], 'on_site' => []], $this->requestJson('GET', $url.'1111111111111111111', token: self::BOT_TOKEN));
+
+        // Click order is kept; a player on both lists stays on the first only.
+        $this->requestJson('PUT', $url.'1111111111111111111', ['on_my_way' => $ids, 'on_site' => ['300000000000000001', $ids[0]]], self::BOT_TOKEN);
+        self::assertResponseIsSuccessful();
+        $this->requestJson('PUT', $url.'2222222222222222222', ['on_my_way' => ['300000000000000002']], self::BOT_TOKEN);
+
+        self::assertSame(['on_my_way' => $ids, 'on_site' => ['300000000000000001']], $this->requestJson('GET', $url.'1111111111111111111', token: self::BOT_TOKEN));
+        self::assertSame(['on_my_way' => ['300000000000000002'], 'on_site' => []], $this->requestJson('GET', $url.'2222222222222222222', token: self::BOT_TOKEN));
+
+        $this->requestJson('PUT', $url.'1111111111111111111', ['on_my_way' => array_slice($ids, 1)], self::BOT_TOKEN);
+        self::assertSame(array_slice($ids, 1), $this->requestJson('GET', $url.'1111111111111111111', token: self::BOT_TOKEN)['on_my_way']);
+    }
+
+    public function testRejectsBadPresenceAndPlayers(): void
+    {
+        $user = $this->createUser(discordUserId: '100000000000000001');
+        $spawn = new WardenSpawn($this->createMonster(), 'Monza', 'Venore', $user);
+        $this->em->persist($spawn);
+        $this->em->flush();
+        $url = \sprintf('/api/v1/internal/warden-spawns/%s/presence/1111111111111111111', $spawn->getId());
+
+        $data = $this->requestJson('PUT', $url, ['on_my_way' => ['<@1>']], self::BOT_TOKEN);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('on_my_way[0]', $data['violations'][0]['property_path']);
+
+        $this->requestJson('GET', $url, token: $this->tokenFor($user));
+        self::assertResponseStatusCodeSame(403);
+
+        $this->requestJson('GET', '/api/v1/internal/warden-spawns/00000000-0000-0000-0000-000000000000/presence/1111111111111111111', token: self::BOT_TOKEN);
+        self::assertResponseStatusCodeSame(404);
+    }
 }

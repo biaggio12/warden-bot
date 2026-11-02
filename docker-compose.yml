@@ -27,6 +27,9 @@ x-php: &php
     DISCORD_CLIENT_ID: ${DISCORD_APPLICATION_ID:-}
     DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
     DISCORD_OAUTH_REDIRECT_URI: ${FRONTEND_URL:-http://localhost:5173}/auth/discord/callback
+    # Bot token + channel prefix: the report form lists the player's Discord servers to pick one
+    DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+    CHANNEL_PREFIX: ${CHANNEL_PREFIX-wardens-}
     # Sentry: errors + LoggerInterface logs (empty DSN = disabled)
     SENTRY_DSN: ${SENTRY_DSN:-}
     SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}

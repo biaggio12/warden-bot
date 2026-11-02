@@ -21,6 +21,7 @@ import {
   parseGoneCustomId,
   parseKillCustomId,
   presenceListOf,
+  spawnIdOfPresenceButton,
   reporterIdOfAlert,
   togglePresence,
   type PresenceList,
@@ -112,19 +113,20 @@ export class InteractionHandler {
 
   /**
    * [OMW] / [On site] put the player on that list of the alert (and off the other one);
-   * clicking the same button again takes them off. The lists are stored in the alert
-   * itself, so they survive restarts and each channel keeps its own. The click is
+   * clicking the same button again takes them off. Each alert (channel) keeps its own
+   * lists; the full ones are saved in the backend, the alert names the first few. The click is
    * acknowledged at once; the edit goes through AlertPresence, so simultaneous clicks
    * all end up on the list.
    */
   private async handlePresence(interaction: ButtonInteraction, list: PresenceList): Promise<void> {
     await interaction.deferUpdate();
     const embed = interaction.message.embeds[0];
-    if (!embed) {
+    const spawnId = spawnIdOfPresenceButton(interaction.customId);
+    if (!embed || !spawnId) {
       return;
     }
     await this.presence.change(
-      interaction.message.id,
+      { spawnId, messageId: interaction.message.id },
       embed.toJSON(),
       (presence) => togglePresence(presence, list, interaction.user.id),
       (next) => interaction.editReply({ embeds: [next] }),
@@ -153,13 +155,13 @@ export class InteractionHandler {
   }
 
   /** After a successful kill the player is neither on the way nor waiting on site. */
-  private async leavePresenceLists(alert: Message | null, userId: string): Promise<void> {
+  private async leavePresenceLists(alert: Message | null, spawnId: string, userId: string): Promise<void> {
     const embed = alert?.embeds[0];
-    if (!alert || !embed || !isInPresence(this.presence.of(alert.id, embed.toJSON()), userId)) {
+    if (!alert || !embed || !isInPresence(await this.presence.of({ spawnId, messageId: alert.id }, embed.toJSON()), userId)) {
       return;
     }
     await this.presence.change(
-      alert.id,
+      { spawnId, messageId: alert.id },
       embed.toJSON(),
       (presence) => leavePresence(presence, userId),
       (next) => alert.edit({ embeds: [next] }),
@@ -182,7 +184,7 @@ export class InteractionHandler {
       const [character] = characters as [(typeof characters)[0]];
       const created = await this.api.markKilled(interaction.user.id, character.id, target.monsterId);
       await interaction.editReply(killConfirmation(monsterName, character.name, created));
-      await this.leavePresenceLists(interaction.message, interaction.user.id);
+      await this.leavePresenceLists(interaction.message, target.spawnId, interaction.user.id);
       return;
     }
 
@@ -209,7 +211,7 @@ export class InteractionHandler {
 
     if (target.alertMessageId && interaction.channel) {
       const alert = await interaction.channel.messages.fetch(target.alertMessageId).catch(() => null);
-      await this.leavePresenceLists(alert, interaction.user.id);
+      await this.leavePresenceLists(alert, target.spawnId, interaction.user.id);
     }
   }
 

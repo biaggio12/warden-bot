@@ -36,6 +36,8 @@ const PRESENCE_ORDER: PresenceList[] = ['onMyWay', 'onSite'];
 const EXPIRY_FIELDS = ['Disappears', 'Expired', 'Znika', 'Wygasło'];
 /** Embed field values are capped at 1024 characters. */
 const FIELD_VALUE_LIMIT = 1024;
+/** Players named on a presence list; the rest are counted as "+N". */
+export const PRESENCE_VISIBLE = 10;
 const SEPARATOR = '|';
 
 export interface KillTarget {
@@ -74,6 +76,11 @@ export function parseGoneCustomId(customId: string): { spawnId: string; confirm:
 /** Which presence list a button toggles, or null for other buttons. */
 export function presenceListOf(customId: string): PresenceList | null {
   return PRESENCE_ORDER.find((list) => customId.startsWith(PRESENCE[list].prefix + SEPARATOR)) ?? null;
+}
+
+/** The spawn an [OMW] / [On site] button belongs to. */
+export function spawnIdOfPresenceButton(customId: string): string | null {
+  return presenceListOf(customId) ? customId.split(SEPARATOR)[1] || null : null;
 }
 
 /** Parses a custom id produced by killButtonId / killSelectId. */
@@ -230,8 +237,9 @@ export function isInPresence(presence: Presence, userId: string): boolean {
 
 /**
  * The alert's embed with its presence fields rewritten (empty lists are removed).
- * Mentions inside embeds show names but never ping anyone. Past ~45 players a list
- * shows the overflow as "+N", while the bot keeps the full lists (see AlertPresence).
+ * Mentions inside embeds show names but never ping anyone. A list names the first
+ * PRESENCE_VISIBLE players and shows the rest as "+N", while the bot keeps the full
+ * lists in memory (see AlertPresence).
  */
 export function withPresence(embed: APIEmbed, presence: Presence): EmbedBuilder {
   const fields = (embed.fields ?? []).filter((f) => presenceListOfField(f.name) === null);
@@ -240,7 +248,7 @@ export function withPresence(embed: APIEmbed, presence: Presence): EmbedBuilder 
     const userIds = presence[list];
     if (userIds.length === 0) continue;
     const mentions: string[] = [];
-    for (const id of userIds) {
+    for (const id of userIds.slice(0, PRESENCE_VISIBLE)) {
       if ([...mentions, `<@${id}>`].join(', ').length > FIELD_VALUE_LIMIT - 8) break;
       mentions.push(`<@${id}>`);
     }
@@ -325,6 +333,17 @@ export function mentionChunks(headline: string, userIds: string[], limit = MAX_C
     }
   }
   return chunks;
+}
+
+/**
+ * allowedMentions for one chunk: only the ids it actually mentions, out of those meant to
+ * be pinged. Discord rejects the whole message when either list has more than 100 ids,
+ * and a chunk holds under 100 mentions, so the alert is posted however many get pinged.
+ */
+export function chunkMentions(content: string, userIds: string[], roleIds: string[] = []): { users: string[]; roles: string[] } {
+  const users = new Set([...content.matchAll(/<@(\d+)>/g)].map((m) => m[1]!));
+  const roles = new Set([...content.matchAll(/<@&(\d+)>/g)].map((m) => m[1]!));
+  return { users: userIds.filter((id) => users.has(id)), roles: roleIds.filter((id) => roles.has(id)) };
 }
 
 export function buildDmNote(characters: CharacterRef[]): string {

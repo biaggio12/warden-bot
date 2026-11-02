@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AuthResponse, Character, DiscordConfig, Me, Monster, Player, Stats, StatsPeriod, WardenSpawn } from './types';
+import type { AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, Stats, StatsPeriod, WardenSpawn } from './types';
 
 export const endpoints = {
   login: (email: string, password: string) => api<AuthResponse>('POST', '/auth/login', { email, password }),
@@ -32,6 +32,9 @@ export const endpoints = {
     ),
   /** The Warden was killed before its time ran out: closes the report and takes the Discord alert down. */
   killSpawn: (id: string) => api<WardenSpawn>('POST', `/warden-spawns/${id}/kill`),
+  /** Empty when the player has no linked Discord or the server cannot list them. */
+  discordGuilds: (serverName: string) =>
+    api<{ enabled: boolean; guilds: DiscordGuild[] }>('GET', `/discord-guilds?server_name=${encodeURIComponent(serverName)}`).then((r) => r.guilds),
   stats: (period: StatsPeriod) => api<Stats>('GET', `/stats?period=${period}`),
   reportSpawn: (payload: {
     monster_id: number;
@@ -40,6 +43,8 @@ export const endpoints = {
     location_description: string;
     additional_info: string | null;
     ttl_minutes: number;
+    /** Only this Discord server gets the alert; null = every server the player is in. */
+    discord_guild_id: string | null;
   }) =>
     api<WardenSpawn>('POST', '/warden-spawns', payload),
 };

@@ -72,7 +72,8 @@ final class WardenSpawnApiTest extends ApiTestCase
 
     public function testKeepsTheDiscordServerOfTheReport(): void
     {
-        $user = $this->createUser();
+        $user = $this->createUser(discordUserId: '123456789012345678');
+        $this->fakeDiscordGuilds([['id' => '1234567890123456789', 'name' => 'Guild', 'channels' => ['wardens-monza'], 'members' => ['123456789012345678']]]);
         $monster = $this->createMonster();
         $payload = [
             'monster_id' => $monster->getId(),
@@ -91,6 +92,103 @@ final class WardenSpawnApiTest extends ApiTestCase
         $data = $this->requestJson('POST', '/api/v1/warden-spawns', ['discord_guild_id' => 'abc'] + $payload, $this->tokenFor($user));
         self::assertResponseStatusCodeSame(422);
         self::assertSame(['discord_guild_id'], array_column($data['violations'], 'property_path'));
+    }
+
+    public function testAllowsFiveReportsInFiveMinutes(): void
+    {
+        $user = $this->createUser(discordUserId: '123456789012345678');
+        $other = $this->createUser('other@example.com');
+        $monster = $this->createMonster();
+        $token = $this->tokenFor($user);
+        $payload = ['monster_id' => $monster->getId(), 'server_name' => 'Monza', 'location_description' => 'Venore Dragon Lair'];
+        // Older reports and other players' reports do not count.
+        foreach ([$user, $user, $other] as $i => $reporter) {
+            $this->em->persist(new WardenSpawn($monster, 'Monza', 'Old spot', $reporter, createdAt: new \DateTimeImmutable(\sprintf('-%d minutes', 6 + $i))));
+        }
+        $this->em->flush();
+
+        for ($i = 0; $i < 5; ++$i) {
+            $this->requestJson('POST', '/api/v1/warden-spawns', $payload, $token);
+            self::assertResponseStatusCodeSame(201);
+        }
+        $data = $this->requestJson('POST', '/api/v1/warden-spawns', $payload, $token);
+
+        self::assertResponseStatusCodeSame(429);
+        self::assertSame('report_limit', $data['code']);
+        self::assertStringStartsWith('You can send at most 5 reports in 5 minutes. Try again in 5 min', $data['detail']);
+        self::assertGreaterThan(290, (int) $this->client->getResponse()->headers->get('Retry-After'));
+        /** @var InMemoryTransport $transport */
+        $transport = static::getContainer()->get('messenger.transport.discord_events');
+        self::assertCount(0, $transport->getSent(), 'the rejected report pings nobody');
+        self::assertCount(5 + 2, $this->em->getRepository(WardenSpawn::class)->findBy(['reportedBy' => $user]));
+    }
+
+    public function testTheReportLimitFreesUpAsOldReportsLeaveTheWindow(): void
+    {
+        $user = $this->createUser();
+        $monster = $this->createMonster();
+        foreach ([270, 200, 200, 100, 10] as $secondsAgo) {
+            $this->em->persist(new WardenSpawn($monster, 'Monza', 'Old spot', $user, createdAt: new \DateTimeImmutable("-{$secondsAgo} seconds")));
+        }
+        $this->em->flush();
+
+        $data = $this->requestJson('POST', '/api/v1/warden-spawns', ['monster_id' => $monster->getId(), 'server_name' => 'Monza', 'location_description' => 'Venore Dragon Lair'], $this->tokenFor($user));
+
+        // The oldest leaves the 5 minute window in 30 seconds.
+        self::assertResponseStatusCodeSame(429);
+        self::assertMatchesRegularExpression('/Try again in (29|30) s\.$/', $data['detail']);
+        self::assertContains((int) $this->client->getResponse()->headers->get('Retry-After'), [29, 30]);
+    }
+
+    public function testRejectsADiscordServerThePlayerIsNotIn(): void
+    {
+        $user = $this->createUser(discordUserId: '123456789012345678');
+        $this->fakeDiscordGuilds([['id' => '1234567890123456789', 'name' => 'Guild', 'channels' => ['wardens-monza'], 'members' => []]]);
+        $monster = $this->createMonster();
+
+        $data = $this->requestJson('POST', '/api/v1/warden-spawns', [
+            'monster_id' => $monster->getId(),
+            'server_name' => 'Monza',
+            'location_description' => 'Venore Dragon Lair',
+            'discord_guild_id' => '1234567890123456789',
+        ], $this->tokenFor($user));
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame(['discord_guild_id'], array_column($data['violations'], 'property_path'));
+        /** @var InMemoryTransport $transport */
+        $transport = static::getContainer()->get('messenger.transport.discord_events');
+        self::assertCount(0, $transport->getSent());
+    }
+
+    public function testListsTheDiscordServersAReportCanGoTo(): void
+    {
+        $user = $this->createUser(discordUserId: '123456789012345678');
+        $this->fakeDiscordGuilds([
+            ['id' => '100000000000000001', 'name' => 'Zeta', 'channels' => ['general', 'wardens-monza'], 'members' => ['123456789012345678']],
+            ['id' => '100000000000000002', 'name' => 'alpha', 'channels' => ['wardens-monza'], 'members' => ['123456789012345678']],
+            ['id' => '100000000000000003', 'name' => 'No channel', 'channels' => ['wardens-secura'], 'members' => ['123456789012345678']],
+            ['id' => '100000000000000004', 'name' => 'Not a member', 'channels' => ['wardens-monza'], 'members' => []],
+        ]);
+
+        $data = $this->requestJson('GET', '/api/v1/discord-guilds?server_name=monza', null, $this->tokenFor($user));
+
+        self::assertResponseIsSuccessful();
+        self::assertTrue($data['enabled']);
+        self::assertSame([
+            ['id' => '100000000000000002', 'name' => 'alpha'],
+            ['id' => '100000000000000001', 'name' => 'Zeta'],
+        ], $data['guilds']);
+    }
+
+    public function testListsNoDiscordServersForAPlayerWithoutDiscord(): void
+    {
+        $user = $this->createUser();
+        $this->fakeDiscordGuilds([['id' => '100000000000000001', 'name' => 'Zeta', 'channels' => ['wardens-monza'], 'members' => []]]);
+
+        $data = $this->requestJson('GET', '/api/v1/discord-guilds?server_name=Monza', null, $this->tokenFor($user));
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $data['guilds']);
     }
 
     public function testStoresCityAndAdditionalInfo(): void

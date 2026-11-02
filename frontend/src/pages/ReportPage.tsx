@@ -58,6 +58,11 @@ export default function ReportPage() {
   const isValid = Object.values(errors).every((e) => e === null);
   const errorFor = (field: keyof typeof errors) => serverErrors[field] ?? (touched[field] ? errors[field] : null);
 
+  // Where the alert goes: every Discord server the player is in, or just one of them.
+  const guilds = useAsync(() => (server ? endpoints.discordGuilds(server).catch(() => []) : Promise.resolve([])), [server]);
+  const [guildId, setGuildId] = useState('');
+  const chosenGuild = guilds.data?.some((g) => g.id === guildId) ? guildId : '';
+
   const spawns = useAsync(() => (server ? endpoints.activeSpawns(server) : Promise.resolve([])), [server]);
   useEffect(() => {
     const interval = setInterval(spawns.reload, 30_000);
@@ -81,6 +86,7 @@ export default function ReportPage() {
         location_description: trimmedLocation,
         additional_info: trimmedInfo || null,
         ttl_minutes: ttl,
+        discord_guild_id: chosenGuild || null,
       });
       toast(`Reported successfully. Disappears at: ${formatClock(spawn.expires_at)}`, 'success');
       setMonster(null);
@@ -188,6 +194,27 @@ export default function ReportPage() {
               ))}
             </div>
           </fieldset>
+
+          {(guilds.data?.length ?? 0) > 1 && (
+            <Field label="Send to Discord" error={serverErrors.discord_guild_id ?? null}>
+              <select
+                className={`input max-w-md ${serverErrors.discord_guild_id ? 'border-hp' : ''}`}
+                aria-label="Discord server"
+                value={chosenGuild}
+                onChange={(e) => {
+                  setGuildId(e.target.value);
+                  setServerErrors(({ discord_guild_id: _, ...rest }) => rest);
+                }}
+              >
+                <option value="">All my servers ({guilds.data!.length})</option>
+                {guilds.data!.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    Only {g.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           <button type="submit" className="btn-primary min-h-12 px-10 text-base" disabled={!isValid || submitting}>
             {submitting ? 'Sending…' : 'Report'}

@@ -50,7 +50,19 @@ export class EventConsumer {
     await channel.prefetch(5);
 
     connection.on('error', (error: Error) => console.error('[amqp] Connection error:', error.message));
+    // The broker can close just the channel (or cancel the consumer) and keep the connection:
+    // nothing would arrive any more while the bot looks healthy. Reconnect from scratch.
+    let closing = false;
+    const reconnect = (reason: string) => {
+      if (closing || this.stopped) return;
+      closing = true;
+      console.warn(`[amqp] ${reason}, reconnecting`);
+      void connection.close().catch(() => undefined);
+    };
+    channel.on('error', (error: Error) => console.error('[amqp] Channel error:', error.message));
+    channel.on('close', () => reconnect('Channel closed'));
     connection.on('close', () => {
+      closing = true;
       this.connected = false;
       this.connection = null;
       if (!this.stopped) {
@@ -59,8 +71,21 @@ export class EventConsumer {
       }
     });
 
+    // After the connection drops, ack/nack of a message still being handled throws: the
+    // broker has already put it back in the queue and redelivers it (a redelivered
+    // warden.spawned is recognised and not posted twice).
+    const settle = (action: () => void, what: string) => {
+      try {
+        action();
+      } catch (error) {
+        console.warn(`[amqp] Could not ${what} a message (connection lost, it will be redelivered):`, (error as Error).message);
+      }
+    };
+
     await channel.consume(QUEUE, (message) => {
       if (!message) {
+        // The broker cancelled the consumer (e.g. the queue was deleted).
+        reconnect('Consumer cancelled by the broker');
         return;
       }
       let event: WardenEvent;
@@ -68,17 +93,17 @@ export class EventConsumer {
         event = parseEvent(message.content.toString('utf8'));
       } catch (error) {
         console.error('[amqp] Dropping malformed event:', error instanceof InvalidEventError ? error.message : error);
-        channel.nack(message, false, false);
+        settle(() => channel.nack(message, false, false), 'drop');
         return;
       }
 
       this.handler(event).then(
-        () => channel.ack(message),
+        () => settle(() => channel.ack(message), 'ack'),
         (error: unknown) => {
           const requeue = !message.fields.redelivered;
           console.error(`[amqp] Handling ${event.event} failed (${requeue ? 'requeued' : 'dropped'}):`, error);
           Sentry.captureException(error, { tags: { event: event.event, requeued: String(requeue) } });
-          channel.nack(message, false, requeue);
+          settle(() => channel.nack(message, false, requeue), 'requeue');
         },
       );
     });

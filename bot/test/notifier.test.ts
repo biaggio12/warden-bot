@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../src/api.js';
 import type { WardenKilled } from '../src/events.js';
 import type { MonsterCatalog } from '../src/monsterCatalog.js';
+import { AlertPresence } from '../src/alertPresence.js';
 import { Notifier, type NotifierOptions } from '../src/notifier.js';
 import { buildSpawnMessage, withPresence, type Presence } from '../src/messages.js';
 import { postedAlert, spawnFixture } from './fixtures.js';
@@ -65,7 +66,7 @@ function setup(
     ...options,
   });
 
-  return { notifier, channel, channelMessages, user, api, sent, byId };
+  return { notifier, channel, channelMessages, user, api, sent, byId, client };
 }
 
 function historyAlert(spawnId: string, expiresAt: string, author = BOT_ID) {
@@ -136,6 +137,28 @@ describe('Notifier', () => {
     expect(alert!.edit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(alert!.edit).toHaveBeenCalledWith({ content: '**Dragon Warden**' });
+  });
+
+  it('splits a ping over the 2000 character limit and allows at most 100 mentions per message', async () => {
+    const ids = Array.from({ length: 150 }, (_, i) => String(123456789012345678n + BigInt(i)));
+    const ctx = setup({}, [], ids.map((id) => ({ discord_user_id: id, characters: [{ id: `c${id}`, name: 'Sir Tester' }] })));
+    notifier = ctx.notifier;
+
+    await notifier.onSpawned(spawnFixture());
+
+    expect(ctx.sent).toHaveLength(2);
+    const [alert, extra] = ctx.sent;
+    expect(alert!.payload.embeds).toHaveLength(1);
+    expect(extra!.payload.embeds).toBeUndefined();
+    for (const { payload } of ctx.sent) {
+      expect(payload.content.length).toBeLessThanOrEqual(2000);
+      expect(payload.allowedMentions.users.length).toBeLessThanOrEqual(100);
+    }
+    expect(ctx.sent.flatMap(({ payload }) => payload.allowedMentions.users)).toEqual(ids);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(alert!.edit).toHaveBeenCalledWith({ content: '**Dragon Warden**' });
+    expect(extra!.delete).toHaveBeenCalledOnce();
   });
 
   it('pings the configured role on a server that has it, then edits it out too', async () => {
@@ -332,6 +355,43 @@ describe('Notifier', () => {
     expect(target.reply).toHaveBeenCalledOnce();
     expect(target.delete).not.toHaveBeenCalled();
     expect(other.edit).not.toHaveBeenCalled();
+  });
+
+  it('a kill that arrives while the alert is still being posted waits for it and marks it dead', async () => {
+    const ctx = setup();
+    notifier = ctx.notifier;
+    let recipientsLoaded!: (value: unknown[]) => void;
+    ctx.api.getRecipients.mockReturnValueOnce(new Promise((resolve) => (recipientsLoaded = resolve)));
+
+    // Both events are handled at once (the consumer prefetches several).
+    const spawned = notifier.onSpawned(spawnFixture());
+    const killedNow = notifier.onKilled(killed());
+    recipientsLoaded([]);
+    await Promise.all([spawned, killedNow]);
+
+    const [alert] = ctx.sent;
+    expect(alert).toBeDefined();
+    expect(ctx.client.channels.fetch).toHaveBeenCalled();
+    // The kill looked for the alert that was just posted, not an empty list.
+    expect(ctx.channelMessages.fetch).toHaveBeenCalledWith(alert!.id);
+  });
+
+  it('after a restart pings every player on the way, also those the alert does not name', async () => {
+    const players = Array.from({ length: 15 }, (_, i) => String(100000000000000000n + BigInt(i)));
+    const target = liveAlert('old', spawnFixture({ spawn_id: 'old-run-spawn' }), { onMyWay: players, onSite: [] });
+    const load = vi.fn().mockResolvedValue({ onMyWay: players, onSite: [] });
+    const ctx = setup({ presence: new AlertPresence({ load, save: vi.fn() }) }, [target] as never);
+    notifier = ctx.notifier;
+
+    await notifier.onKilled(killed({ spawn_id: 'old-run-spawn' }));
+
+    expect(load).toHaveBeenCalledWith('old-run-spawn', 'old');
+    const pinged = target.reply.mock.calls.flatMap(([reply]) => reply.allowedMentions.users);
+    expect(pinged).toEqual(players);
+    // The final alert still names 10 of them and counts the rest.
+    const final = target.edit.mock.calls[0]![0].embeds[0].toJSON().fields.find((f: { name: string }) => f.name.startsWith('On my way'));
+    expect(final.name).toBe('On my way (15)');
+    expect(final.value).toMatch(/ \+5$/);
   });
 });
 

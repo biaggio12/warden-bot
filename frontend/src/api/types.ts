@@ -88,3 +88,9 @@ export interface DiscordConfig {
   enabled: boolean;
   authorize_url: string | null;
 }
+
+/** A Discord server a web report can be sent to (the player is in it and it has the world's alert channel). */
+export interface DiscordGuild {
+  id: string;
+  name: string;
+}

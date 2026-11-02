@@ -145,8 +145,10 @@ describe('presence buttons', () => {
 
     // One edit for the first click, one more carrying all 20 others.
     expect(edits).toHaveBeenCalledTimes(1);
-    const final = presenceIn(edits.mock.calls[0]![0]);
-    expect(final.onMyWay).toEqual(Array.from({ length: 21 }, (_, i) => String(i + 1)));
+    // All 21 are counted; the first 10 are named, the rest shown as +11.
+    const field = edits.mock.calls[0]![0].embeds[0].toJSON().fields.find((f: { name: string }) => f.name.startsWith('On my way'));
+    expect(field.name).toBe('On my way (21)');
+    expect(field.value).toBe(Array.from({ length: 10 }, (_, i) => `<@${i + 1}>`).join(', ') + ' +11');
   });
 });
 

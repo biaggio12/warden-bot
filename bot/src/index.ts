@@ -32,7 +32,10 @@ async function main(): Promise<void> {
     console.warn('[discord] DISCORD_TOKEN is empty - running in dry-run mode (events are only logged)');
   }
 
-  const presence = new AlertPresence();
+  const presence = new AlertPresence({
+    load: (spawnId, messageId) => api.getPresence(spawnId, messageId),
+    save: (spawnId, messageId, lists) => api.savePresence(spawnId, messageId, lists),
+  });
   const notifier = new Notifier(client, api, catalog, {
     channelPrefix: config.channelPrefix,
     directMessages: config.directMessages,

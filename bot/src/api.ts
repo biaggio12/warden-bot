@@ -3,6 +3,8 @@
  * on behalf of a player add X-Discord-User-Id so the backend applies that player's
  * permissions (e.g. the character ownership voter).
  */
+import type { Presence } from './messages.js';
+
 export interface CharacterRef {
   id: string;
   name: string;
@@ -63,6 +65,20 @@ export class ApiClient {
   async getRecipients(spawnId: string): Promise<Recipient[]> {
     const body = await this.request<{ recipients: Recipient[] }>('GET', `/internal/warden-spawns/${encodeURIComponent(spawnId)}/recipients`);
     return body.recipients;
+  }
+
+  /** The full [OMW] / [On site] lists of one alert (empty for one nobody clicked). */
+  async getPresence(spawnId: string, messageId: string): Promise<Presence> {
+    const body = await this.request<{ on_my_way: string[]; on_site: string[] }>('GET', this.presencePath(spawnId, messageId));
+    return { onMyWay: body.on_my_way, onSite: body.on_site };
+  }
+
+  async savePresence(spawnId: string, messageId: string, presence: Presence): Promise<void> {
+    await this.request('PUT', this.presencePath(spawnId, messageId), { on_my_way: presence.onMyWay, on_site: presence.onSite });
+  }
+
+  private presencePath(spawnId: string, messageId: string): string {
+    return `/internal/warden-spawns/${encodeURIComponent(spawnId)}/presence/${encodeURIComponent(messageId)}`;
   }
 
   async getMonsters(): Promise<Monster[]> {

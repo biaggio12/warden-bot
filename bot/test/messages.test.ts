@@ -8,6 +8,7 @@ import {
   killButtonId,
   killSelectId,
   mentionChunks,
+  chunkMentions,
   presenceButtonId,
   presenceListOf,
   presenceOf,
@@ -99,6 +100,13 @@ describe('mentionChunks', () => {
   });
 });
 
+describe('chunkMentions', () => {
+  it('allows only the mentions in that chunk, out of those meant to be pinged', () => {
+    expect(chunkMentions('💀 dead, reported by <@7>: <@42> <@43>', ['42', '43', '44'])).toEqual({ users: ['42', '43'], roles: [] });
+    expect(chunkMentions('**Hydra** <@&77> <@1>', ['1'], ['77', '78'])).toEqual({ users: ['1'], roles: ['77'] });
+  });
+});
+
 describe('reading back a posted alert', () => {
   it('finds the spawn id and expiry of an active alert', () => {
     const alert = parsePostedAlert(postedAlert(spawnFixture()) as never);
@@ -154,14 +162,22 @@ describe('presence buttons and lists', () => {
     expect(togglePresence(arrived, 'onSite', '111')).toEqual({ onMyWay: [], onSite: [] });
   });
 
-  it('keeps each field within the 1024 character limit', () => {
-    const ids = Array.from({ length: 80 }, (_, i) => String(100000000000000000n + BigInt(i)));
+  it('names the first 10 players on a list and counts the rest as +N', () => {
+    const ids = Array.from({ length: 15 }, (_, i) => String(100000000000000000n + BigInt(i)));
 
     const field = withPresence(embed(), { onMyWay: ids, onSite: [] }).toJSON().fields!.find((f) => f.name.startsWith('On my way'))!;
 
-    expect(field.value.length).toBeLessThanOrEqual(1024);
-    expect(field.name).toBe('On my way (80)');
-    expect(field.value).toMatch(/\+\d+$/);
+    expect(field.name).toBe('On my way (15)');
+    expect(field.value).toBe(ids.slice(0, 10).map((id) => `<@${id}>`).join(', ') + ' +5');
+  });
+
+  it('shows exactly 10 players without a +N', () => {
+    const ids = Array.from({ length: 10 }, (_, i) => String(100000000000000000n + BigInt(i)));
+
+    const field = withPresence(embed(), { onMyWay: [], onSite: ids }).toJSON().fields!.find((f) => f.name.startsWith('On site'))!;
+
+    expect(field.name).toBe('On site (10)');
+    expect(field.value).not.toContain('+');
   });
 
   it('carries the alert message id through the character select', () => {

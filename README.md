@@ -301,6 +301,10 @@ W `.env`: `FRONTEND_URL` i `VITE_API_URL` to adres publiczny, `CORS_ALLOW_ORIGIN
   rejestrację i logowanie e-mail + hasło (token ważny 30 dni) oraz łączenie konta Discord
   jednorazowym kodem.
 - **Kanały publiczne** są wyszukiwane po nazwie `#wardens-<świat>` (prefiks: `CHANNEL_PREFIX`).
+- **Wybór serwera Discord** w formularzu zgłoszenia: domyślnie alert idzie na wszystkie serwery
+  gracza; gdy ma ich kilka, może wybrać jeden. Backend pyta Discord API tokenem bota
+  (`DISCORD_TOKEN`, przekazany też do kontenera `php`) o serwery, na których jest gracz i kanał
+  `<CHANNEL_PREFIX><świat>` (wynik w cache 5 min). Bez tokenu wyboru nie ma.
 - **Lista światów** jest konfigurowalna przez `TIBIA_WORLDS`.
 - **Status `KILLED`** jest w schemacie, ale żaden endpoint go jeszcze nie ustawia (specyfikacja
   nie opisuje, kiedy zgłoszenie uznać za zabite).

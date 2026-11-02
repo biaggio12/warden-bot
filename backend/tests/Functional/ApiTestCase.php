@@ -9,6 +9,8 @@ use App\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\JsonMockResponse;
 
 /**
  * Each test runs inside a transaction rolled back by DAMADoctrineTestBundle.
@@ -64,6 +66,36 @@ abstract class ApiTestCase extends WebTestCase
         $this->em->flush();
 
         return $character;
+    }
+
+    /**
+     * Replaces the Discord API (bot calls) with these servers. Disables kernel reboots so
+     * the fake stays in place for every request of the test.
+     *
+     * @param list<array{id: string, name: string, channels: list<string>, members: list<string>}> $guilds
+     */
+    protected function fakeDiscordGuilds(array $guilds): void
+    {
+        $this->client->disableReboot();
+        $byId = array_column($guilds, null, 'id');
+        $notFound = static fn (): JsonMockResponse => new JsonMockResponse(['message' => 'Unknown'], ['http_code' => 404]);
+
+        static::getContainer()->set('discord.client', new MockHttpClient(static function (string $method, string $url) use ($guilds, $byId, $notFound) {
+            $path = substr((string) parse_url($url, \PHP_URL_PATH), \strlen('/api/v10/'));
+            if ('users/@me/guilds' === $path) {
+                return new JsonMockResponse(array_map(static fn (array $g): array => ['id' => $g['id'], 'name' => $g['name']], $guilds));
+            }
+            if (1 === preg_match('#^guilds/(\d+)/channels$#', $path, $m)) {
+                return isset($byId[$m[1]])
+                    ? new JsonMockResponse(array_map(static fn (string $name): array => ['name' => $name, 'type' => 0], $byId[$m[1]]['channels']))
+                    : $notFound();
+            }
+            if (1 === preg_match('#^guilds/(\d+)/members/(\d+)$#', $path, $m)) {
+                return \in_array($m[2], $byId[$m[1]]['members'] ?? [], true) ? new JsonMockResponse(['user' => ['id' => $m[2]]]) : $notFound();
+            }
+
+            return $notFound();
+        }, 'https://discord.com/api/v10/'));
     }
 
     /**

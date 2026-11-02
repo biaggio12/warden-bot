@@ -3,9 +3,12 @@
 namespace App\Controller;
 
 use App\Dto\LinkDiscordRequest;
+use App\Dto\UpdatePresenceRequest;
+use App\Entity\WardenSpawnPresence;
 use App\Http\Problem;
 use App\Repository\CharacterRepository;
 use App\Repository\UserRepository;
+use App\Repository\WardenSpawnPresenceRepository;
 use App\Repository\WardenSpawnRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
@@ -42,6 +45,42 @@ final class InternalController extends AbstractController
             'spawn_id' => $spawn->getId()->toRfc4122(),
             'recipients' => array_values($byDiscordUser),
         ]);
+    }
+
+    /**
+     * The full [OMW] / [On site] lists of one alert (the alert itself names only the first
+     * few). Empty lists for an alert nobody has clicked yet.
+     */
+    #[Route('/warden-spawns/{spawn_id}/presence/{message_id}', name: 'api_internal_presence_get', methods: ['GET'], requirements: ['message_id' => '\d{5,20}'])]
+    public function presence(string $spawn_id, string $message_id, WardenSpawnRepository $spawns, WardenSpawnPresenceRepository $presences): JsonResponse
+    {
+        $spawn = $spawns->findByIdString($spawn_id) ?? throw $this->createNotFoundException('Report not found.');
+        $presence = $presences->findOneByAlert($spawn, $message_id);
+
+        return $this->json(['on_my_way' => $presence?->getOnMyWay() ?? [], 'on_site' => $presence?->getOnSite() ?? []]);
+    }
+
+    /** Replaces the lists of one alert; the bot sends them after every change. */
+    #[Route('/warden-spawns/{spawn_id}/presence/{message_id}', name: 'api_internal_presence_put', methods: ['PUT'], requirements: ['message_id' => '\d{5,20}'])]
+    public function updatePresence(
+        string $spawn_id,
+        string $message_id,
+        #[MapRequestPayload] UpdatePresenceRequest $payload,
+        WardenSpawnRepository $spawns,
+        WardenSpawnPresenceRepository $presences,
+        EntityManagerInterface $em,
+        ClockInterface $clock,
+    ): JsonResponse {
+        $spawn = $spawns->findByIdString($spawn_id) ?? throw $this->createNotFoundException('Report not found.');
+        $presence = $presences->findOneByAlert($spawn, $message_id);
+        if (null === $presence) {
+            $presence = new WardenSpawnPresence($spawn, $message_id, $clock->now());
+            $em->persist($presence);
+        }
+        $presence->replace($payload->onMyWay, $payload->onSite, $clock->now());
+        $em->flush();
+
+        return $this->json(['on_my_way' => $presence->getOnMyWay(), 'on_site' => $presence->getOnSite()]);
     }
 
     #[Route('/discord-links', name: 'api_internal_discord_link', methods: ['POST'])]

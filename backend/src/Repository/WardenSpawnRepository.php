@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\User;
 use App\Entity\WardenSpawn;
 use App\Enum\WardenSpawnStatus;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
@@ -46,6 +47,26 @@ class WardenSpawnRepository extends ServiceEntityRepository
         }
 
         return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * When the player's reports since `$since` were made, oldest first (for the report limit).
+     *
+     * @return list<\DateTimeImmutable>
+     */
+    public function reportTimesSince(User $reporter, \DateTimeImmutable $since): array
+    {
+        $rows = $this->createQueryBuilder('s')
+            ->select('s.createdAt')
+            ->where('s.reportedBy = :reporter')
+            ->andWhere('s.createdAt > :since')
+            ->setParameter('reporter', $reporter)
+            ->setParameter('since', $since)
+            ->orderBy('s.createdAt', 'ASC')
+            ->getQuery()
+            ->getArrayResult();
+
+        return array_map(static fn (array $row): \DateTimeImmutable => $row['createdAt'], $rows);
     }
 
     /**

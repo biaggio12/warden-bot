@@ -8,6 +8,7 @@ import {
   buildDmNote,
   bestiaryUrlOf,
   buildSpawnMessage,
+  chunkMentions,
   disabledButtonRows,
   killNotice,
   killedAlert,
@@ -51,6 +52,8 @@ export class Notifier {
   private readonly bestiaryUrl: string | undefined;
   private readonly presence: AlertPresence;
   private readonly timers = new Set<NodeJS.Timeout>();
+  /** Reports whose alerts are still being posted; a kill or expiry of one waits for it. */
+  private readonly announcing = new Map<string, Promise<void>>();
 
   constructor(
     private readonly client: Client | null,
@@ -69,6 +72,16 @@ export class Notifier {
     }
     this.catalog.remember(spawn.monster);
     this.registry.register(spawn);
+
+    // Events are handled several at a time: a kill or expiry of this report that comes in
+    // meanwhile must find all of its alerts, so it waits until they are posted.
+    const announced = this.announce(spawn).finally(() => this.announcing.delete(spawn.spawn_id));
+    this.announcing.set(spawn.spawn_id, announced);
+    await announced;
+  }
+
+  /** The channel alerts, then the DMs. */
+  private async announce(spawn: WardenSpawned): Promise<void> {
 
     const recipients = await this.recipientsOf(spawn);
     const mentionIds = recipients.map((r) => r.discord_user_id);
@@ -156,11 +169,11 @@ export class Notifier {
     const headline = alertHeadline(spawn);
     const roleIds = (this.options.pingRoleIds ?? []).filter((id) => channel.guild.roles.cache.has(id));
     const [first, ...overflow] = mentionChunks(headline, mentionIds, undefined, roleIds);
-    const allowedMentions = { parse: [], users: mentionIds, roles: roleIds };
+    const allowedMentions = (content: string) => ({ parse: [], ...chunkMentions(content, mentionIds, roleIds) });
 
     let alert: Message;
     try {
-      alert = await channel.send({ ...buildSpawnMessage(spawn, { onMyWay: true, bestiaryUrl: this.bestiaryUrl }), content: first, allowedMentions });
+      alert = await channel.send({ ...buildSpawnMessage(spawn, { onMyWay: true, bestiaryUrl: this.bestiaryUrl }), content: first, allowedMentions: allowedMentions(first!) });
       this.registry.addMessage(spawn.spawn_id, { channelId: channel.id, messageId: alert.id });
     } catch (error) {
       console.error(`[notify] Could not post in #${channel.name} (${channel.guild.name}):`, error);
@@ -170,7 +183,7 @@ export class Notifier {
     const extra: Message[] = [];
     for (const content of overflow) {
       try {
-        extra.push(await channel.send({ content, allowedMentions }));
+        extra.push(await channel.send({ content, allowedMentions: allowedMentions(content) }));
       } catch (error) {
         console.warn(`[notify] Could not send extra pings in #${channel.name}:`, (error as Error).message);
       }
@@ -185,6 +198,7 @@ export class Notifier {
   }
 
   async onExpired(event: WardenExpired): Promise<void> {
+    await this.announcing.get(event.spawn_id)?.catch(() => undefined);
     const handled = await this.registry.expire(event.spawn_id);
     if (!handled) {
       console.info(`[notify] Spawn ${event.spawn_id} expired (not tracked or already handled)`);
@@ -202,6 +216,7 @@ export class Notifier {
       console.info(`[dry-run] Spawn ${event.spawn_id} @ ${event.server_name} reported killed`);
       return;
     }
+    await this.announcing.get(event.spawn_id)?.catch(() => undefined);
     const tracked = this.registry.get(event.spawn_id) !== null;
     if (tracked && !this.registry.markKilled(event.spawn_id)) {
       return; // already over, or a redelivered event
@@ -245,7 +260,7 @@ export class Notifier {
     if (!embed) return;
     const killer = killerOf(event);
     // The lists as the buttons last left them, with no edit of theirs still on the way.
-    const presence = (await this.presence.close(alert.id)) ?? presenceOf(embed.toJSON());
+    const presence = (await this.presence.close(alert.id, event.spawn_id)) ?? presenceOf(embed.toJSON());
 
     try {
       const final = withPresence(embed.toJSON(), presence).toJSON();
@@ -259,10 +274,9 @@ export class Notifier {
     if (waiting.length === 0) return;
 
     const notices: Message[] = [];
-    const allowedMentions = { parse: [], users: waiting, repliedUser: false };
     for (const content of killNotice(monsterNameOfAlert(alert), killer, waiting)) {
       try {
-        notices.push(await alert.reply({ content, allowedMentions }));
+        notices.push(await alert.reply({ content, allowedMentions: { parse: [], users: chunkMentions(content, waiting).users, repliedUser: false } }));
       } catch (error) {
         console.warn(`[notify] Could not ping the players on the way:`, (error as Error).message);
       }

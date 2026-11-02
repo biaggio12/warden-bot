@@ -13,6 +13,7 @@ vi.mock('../api/endpoints', () => ({
     activeSpawns: vi.fn(),
     reportSpawn: vi.fn(),
     killSpawn: vi.fn(),
+    discordGuilds: vi.fn(),
   },
 }));
 
@@ -36,6 +37,7 @@ describe('ReportPage', () => {
     ]);
     mocked.cities.mockResolvedValue(['Thais', 'Venore']);
     mocked.activeSpawns.mockResolvedValue([]);
+    mocked.discordGuilds.mockResolvedValue([]);
   });
 
   it('blocks submitting incomplete data', async () => {
@@ -87,7 +89,9 @@ describe('ReportPage', () => {
       location_description: 'Dragon Lair -2',
       additional_info: 'Wejście od wschodu',
       ttl_minutes: 10,
+      discord_guild_id: null,
     });
+    expect(screen.queryByRole('combobox', { name: 'Discord server' })).not.toBeInTheDocument();
     const expected = new Date('2026-10-29T12:10:00Z').toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     expect(await screen.findByText(`Reported successfully. Disappears at: ${expected}`)).toBeInTheDocument();
   });
@@ -112,6 +116,30 @@ describe('ReportPage', () => {
 
     expect(mocked.reportSpawn).toHaveBeenCalledWith(expect.objectContaining({ server_name: 'Secura' }));
     expect(screen.queryByRole('combobox', { name: /world/i })).not.toBeInTheDocument();
+  });
+
+  it('sends the alert to one chosen Discord server only', async () => {
+    const user = userEvent.setup();
+    mocked.discordGuilds.mockResolvedValue([
+      { id: '100000000000000001', name: 'Alpha' },
+      { id: '100000000000000002', name: 'Beta' },
+    ]);
+    mocked.reportSpawn.mockResolvedValue({
+      id: 's1', monster: { id: 7, name: 'Hydra' }, server_name: 'Monza', city: 'Thais', location_description: 'Hydra cave',
+      additional_info: null, status: 'ACTIVE', created_at: '2026-10-29T12:00:00Z', expires_at: '2026-10-29T12:07:00Z',
+    });
+    renderPage();
+
+    await user.type(await screen.findByPlaceholderText(/Start typing/), 'Hydra');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'City' }), 'Thais');
+    await user.type(screen.getByRole('textbox', { name: 'Spot' }), 'Hydra cave');
+    const picker = await screen.findByRole('combobox', { name: 'Discord server' });
+    expect(picker).toHaveValue('');
+    await user.selectOptions(picker, 'Only Beta');
+    await user.click(screen.getByRole('button', { name: 'Report' }));
+
+    expect(mocked.discordGuilds).toHaveBeenCalledWith('Monza');
+    expect(mocked.reportSpawn).toHaveBeenCalledWith(expect.objectContaining({ discord_guild_id: '100000000000000002' }));
   });
 
   it('defaults the TTL to 8 minutes', async () => {
