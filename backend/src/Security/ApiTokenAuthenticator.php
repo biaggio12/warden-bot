@@ -59,6 +59,9 @@ final class ApiTokenAuthenticator extends AbstractAuthenticator implements Authe
         }
 
         $user = $token->getUser();
+        if ($user->isBlocked()) {
+            throw new CustomUserMessageAuthenticationException('account_blocked');
+        }
 
         return new SelfValidatingPassport(new UserBadge($user->getUserIdentifier(), static fn () => $user));
     }
@@ -74,6 +77,9 @@ final class ApiTokenAuthenticator extends AbstractAuthenticator implements Authe
         if (null === $user) {
             throw new CustomUserMessageAuthenticationException('discord_not_linked');
         }
+        if ($user->isBlocked()) {
+            throw new CustomUserMessageAuthenticationException('account_blocked');
+        }
 
         return new SelfValidatingPassport(new UserBadge($user->getUserIdentifier(), static fn () => $user));
     }
@@ -88,6 +94,11 @@ final class ApiTokenAuthenticator extends AbstractAuthenticator implements Authe
         $message = $exception->getMessageKey();
         if ('discord_not_linked' === $message) {
             return Problem::response(401, 'This Discord account is not linked to a Warden Tracker account.', ['code' => 'discord_not_linked']);
+        }
+
+        if ('account_blocked' === $message) {
+            // 401: the web app drops the session and shows the login page.
+            return Problem::response(401, 'This account has been blocked by an admin.', ['code' => 'account_blocked']);
         }
 
         return Problem::response(401, strtr($message, $exception->getMessageData()));

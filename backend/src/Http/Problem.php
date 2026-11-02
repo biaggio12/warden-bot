@@ -12,6 +12,12 @@ final class Problem
 {
     public const CONTENT_TYPE = 'application/problem+json';
 
+    /** The same answer wherever a blocked account tries to get in. */
+    public static function accountBlocked(): JsonResponse
+    {
+        return self::response(403, 'This account has been blocked by an admin.', ['code' => 'account_blocked']);
+    }
+
     /**
      * @param array<string, mixed> $extra additional members (e.g. "violations")
      */

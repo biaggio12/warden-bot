@@ -10,6 +10,16 @@ export const endpoints = {
   discordAuth: (code: string) => api<AuthResponse | { user: Me }>('POST', '/auth/discord', { code }),
   /** Admins only (403 for everyone else). */
   players: () => api<{ users: Player[] }>('GET', '/admin/users').then((r) => r.users),
+  /** Admin actions on another player's account; each answers with the updated row. */
+  admin: {
+    block: (id: number) => api<Player>('POST', `/admin/users/${id}/block`),
+    unblock: (id: number) => api<Player>('POST', `/admin/users/${id}/unblock`),
+    unlinkDiscord: (id: number) => api<Player>('POST', `/admin/users/${id}/unlink-discord`),
+    deleteUser: (id: number) => api<void>('DELETE', `/admin/users/${id}`),
+    addCharacter: (id: number, name: string, serverName: string) =>
+      api<Player>('POST', `/admin/users/${id}/characters`, { name, server_name: serverName }),
+    deleteCharacter: (id: number, characterId: string) => api<Player>('DELETE', `/admin/users/${id}/characters/${characterId}`),
+  },
   discordLinkCode: () => api<{ code: string; expires_at: string }>('POST', '/me/discord-link-code'),
 
   worlds: () => api<{ worlds: string[] }>('GET', '/worlds').then((r) => r.worlds),

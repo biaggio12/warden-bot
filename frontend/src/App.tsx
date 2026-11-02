@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthContext';
 import Brand from './components/Brand';
 import { LogOutIcon } from './components/Icons';
 import ThemeToggle from './components/ThemeToggle';
+import WelcomeDialog from './components/WelcomeDialog';
 import { DISCORD_CALLBACK_PATH } from './lib/discordAuth';
 import { useAsync } from './lib/useAsync';
 import BestiaryPage from './pages/BestiaryPage';
@@ -26,6 +27,24 @@ const ADMIN_TAB = { id: 'players', label: 'Players', short: 'Players' } as const
 
 type TabId = (typeof TABS)[number]['id'] | typeof ADMIN_TAB.id;
 
+const WELCOME_KEY = 'warden-tracker.welcome-dismissed';
+
+function readFlag(key: string): boolean {
+  try {
+    return sessionStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string): void {
+  try {
+    sessionStorage.setItem(key, '1');
+  } catch {
+    // storage unavailable - the dialog stays closed until the page is reloaded
+  }
+}
+
 function tabFromHash(): TabId {
   const hash = window.location.hash.slice(1);
   return [...TABS, ADMIN_TAB].some((t) => t.id === hash) ? (hash as TabId) : 'report';
@@ -38,6 +57,13 @@ export default function App() {
   const isAdmin = me.data?.is_admin === true;
   const tabs = isAdmin ? [...TABS, ADMIN_TAB] : TABS;
   const tab = hashTab === ADMIN_TAB.id && !isAdmin ? 'report' : hashTab;
+  // First login: an account without characters gets the welcome dialog (once per browser session).
+  const characters = useAsync(() => (session ? endpoints.characters() : Promise.resolve(null)), [session?.token]);
+  const welcomeKey = `${WELCOME_KEY}:${session?.label ?? ''}`;
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const [pageKey, setPageKey] = useState(0);
+  const showWelcome = !dismissed.includes(welcomeKey) && !readFlag(welcomeKey) && me.data != null && characters.data?.length === 0;
+  const discordLinked = me.data?.discord_linked ?? true;
 
   useEffect(() => {
     const onHash = () => setTab(tabFromHash());
@@ -84,7 +110,33 @@ export default function App() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      {!discordLinked && !showWelcome && tab !== 'characters' && (
+        <div role="status" className="border-b-3 border-outline bg-discord text-discord-ink">
+          <p className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm sm:px-6">
+            <span>
+              <strong>Your account is not linked to Discord</strong> - you get no pings and cannot report Wardens.
+            </span>
+            <a href="#characters" className="font-semibold underline underline-offset-2">
+              How to link it
+            </a>
+          </p>
+        </div>
+      )}
+      {showWelcome && (
+        <WelcomeDialog
+          discordLinked={discordLinked}
+          onCheckDiscord={me.reload}
+          onClose={(added) => {
+            writeFlag(welcomeKey);
+            setDismissed((keys) => [...keys, welcomeKey]);
+            if (added) {
+              characters.reload();
+              setPageKey((k) => k + 1);
+            }
+          }}
+        />
+      )}
+      <main key={pageKey} className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
         {tab === 'report' && <ReportPage />}
         {tab === 'bestiary' && <BestiaryPage />}
         {tab === 'stats' && <StatsPage />}

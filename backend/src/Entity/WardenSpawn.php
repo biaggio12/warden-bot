@@ -38,8 +38,9 @@ class WardenSpawn
     private ?string $additionalInfo;
 
     #[ORM\ManyToOne]
-    #[ORM\JoinColumn(name: 'reported_by_user_id', nullable: false)]
-    private User $reportedBy;
+    /** null once the reporter's account was deleted: the report stays in the stats. */
+    #[ORM\JoinColumn(name: 'reported_by_user_id', nullable: true, onDelete: 'SET NULL')]
+    private ?User $reportedBy;
 
     /** Discord server the report came from (/report); the alert is posted there only. */
     #[ORM\Column(length: 20, nullable: true)]
@@ -113,14 +114,14 @@ class WardenSpawn
         return $this->discordGuildId;
     }
 
-    public function getReportedBy(): User
+    public function getReportedBy(): ?User
     {
         return $this->reportedBy;
     }
 
     public function isReportedBy(User $user): bool
     {
-        return null !== $user->getId() && $this->reportedBy->getId() === $user->getId();
+        return null !== $user->getId() && $this->reportedBy?->getId() === $user->getId();
     }
 
     public function getCreatedAt(): \DateTimeImmutable

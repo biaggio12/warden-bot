@@ -63,10 +63,16 @@ final class WardenSpawnController extends AbstractController
         MessageBusInterface $bus,
         DiscordGuildDirectory $guilds,
     ): JsonResponse {
+        // Without Discord the bot cannot tell which servers are the reporter's, and the
+        // alert would go to every server. Reports come from linked accounts only.
+        $discordUserId = $user->getDiscordUserId();
+        if (null === $discordUserId) {
+            return Problem::response(403, 'Link your Discord account to report Wardens (Characters tab).', ['code' => 'discord_required']);
+        }
+
         // A chosen server must be one the player is in (unknown when Discord is unreachable).
         $guildId = $payload->discordGuildId;
-        $discordUserId = $user->getDiscordUserId();
-        if (null !== $guildId && (null === $discordUserId || false === $guilds->isMember($guildId, $discordUserId))) {
+        if (null !== $guildId && false === $guilds->isMember($guildId, $discordUserId)) {
             return Problem::response(422, 'The submitted data is invalid.', [
                 'type' => 'https://datatracker.ietf.org/doc/html/rfc4918#section-11.2',
                 'violations' => [['property_path' => 'discord_guild_id', 'title' => 'You are not a member of this Discord server.']],

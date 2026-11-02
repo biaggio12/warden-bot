@@ -125,7 +125,7 @@ final class WardenSpawnApiTest extends ApiTestCase
 
     public function testTheReportLimitFreesUpAsOldReportsLeaveTheWindow(): void
     {
-        $user = $this->createUser();
+        $user = $this->createUser(discordUserId: '123456789012345678');
         $monster = $this->createMonster();
         foreach ([270, 200, 200, 100, 10] as $secondsAgo) {
             $this->em->persist(new WardenSpawn($monster, 'Monza', 'Old spot', $user, createdAt: new \DateTimeImmutable("-{$secondsAgo} seconds")));
@@ -138,6 +138,25 @@ final class WardenSpawnApiTest extends ApiTestCase
         self::assertResponseStatusCodeSame(429);
         self::assertMatchesRegularExpression('/Try again in (29|30) s\.$/', $data['detail']);
         self::assertContains((int) $this->client->getResponse()->headers->get('Retry-After'), [29, 30]);
+    }
+
+    public function testAnAccountWithoutDiscordCannotReport(): void
+    {
+        $user = $this->createUser();
+        $monster = $this->createMonster();
+
+        $data = $this->requestJson('POST', '/api/v1/warden-spawns', [
+            'monster_id' => $monster->getId(),
+            'server_name' => 'Monza',
+            'location_description' => 'Venore Dragon Lair',
+        ], $this->tokenFor($user));
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame('discord_required', $data['code']);
+        self::assertSame(0, $this->em->getRepository(WardenSpawn::class)->count([]));
+        /** @var InMemoryTransport $transport */
+        $transport = static::getContainer()->get('messenger.transport.discord_events');
+        self::assertCount(0, $transport->getSent());
     }
 
     public function testRejectsADiscordServerThePlayerIsNotIn(): void
@@ -193,7 +212,7 @@ final class WardenSpawnApiTest extends ApiTestCase
 
     public function testStoresCityAndAdditionalInfo(): void
     {
-        $user = $this->createUser();
+        $user = $this->createUser(discordUserId: '123456789012345678');
         $monster = $this->createMonster();
 
         $data = $this->requestJson('POST', '/api/v1/warden-spawns', [
@@ -215,7 +234,7 @@ final class WardenSpawnApiTest extends ApiTestCase
 
     public function testCityAndAdditionalInfoAreOptional(): void
     {
-        $user = $this->createUser();
+        $user = $this->createUser(discordUserId: '123456789012345678');
         $monster = $this->createMonster();
 
         $data = $this->requestJson('POST', '/api/v1/warden-spawns', [
@@ -249,7 +268,7 @@ final class WardenSpawnApiTest extends ApiTestCase
 
     public function testDefaultsTtlToEightMinutes(): void
     {
-        $user = $this->createUser();
+        $user = $this->createUser(discordUserId: '123456789012345678');
         $monster = $this->createMonster();
 
         $data = $this->requestJson('POST', '/api/v1/warden-spawns', [
@@ -265,7 +284,7 @@ final class WardenSpawnApiTest extends ApiTestCase
 
     public function testStripsMarkupFromLocation(): void
     {
-        $user = $this->createUser();
+        $user = $this->createUser(discordUserId: '123456789012345678');
         $monster = $this->createMonster();
 
         $data = $this->requestJson('POST', '/api/v1/warden-spawns', [

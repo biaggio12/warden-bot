@@ -25,6 +25,11 @@ final readonly class AdminPolicy
 
     public function isAdmin(User $user): bool
     {
-        return null !== $user->getDiscordUserId() && \in_array($user->getDiscordUserId(), $this->discordIds, true);
+        return $this->isDiscordIdAdmin($user->getDiscordUserId());
+    }
+
+    public function isDiscordIdAdmin(?string $discordUserId): bool
+    {
+        return null !== $discordUserId && \in_array($discordUserId, $this->discordIds, true);
     }
 }

@@ -46,8 +46,12 @@ export interface Player {
   email: string | null;
   discord_username: string | null;
   discord_linked: boolean;
+  /** Admin accounts (and your own) cannot be blocked, unlinked or deleted. */
+  is_admin: boolean;
+  /** Cannot log in, report or be pinged. */
+  blocked: boolean;
   created_at: string;
-  characters: { name: string; server_name: string }[];
+  characters: Character[];
   reports: number;
   last_report_at: string | null;
   bestiary_marks: number;

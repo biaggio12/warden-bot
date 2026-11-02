@@ -25,6 +25,9 @@ final readonly class ReporterInfo
     public function of(WardenSpawn $spawn): array
     {
         $reporter = $spawn->getReportedBy();
+        if (null === $reporter) {
+            return ['characters' => [], 'discord_name' => null];
+        }
         $names = array_map(
             static fn (Character $c): string => $c->getName(),
             $this->characters->findByUser($reporter, $spawn->getServerName()),

@@ -76,6 +76,9 @@ final class DiscordAuthController extends AbstractController
         }
 
         if (null !== $owner) {
+            if ($owner->isBlocked()) {
+                return Problem::accountBlocked();
+            }
             $owner->linkDiscord($discordUser->id, $discordUser->username);
 
             return $this->json(ApiTokenIssuer::issue($this->em, $this->clock, $owner));

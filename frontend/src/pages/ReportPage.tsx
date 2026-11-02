@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ApiError } from '../api/client';
 import { endpoints } from '../api/endpoints';
 import type { Monster, WardenSpawn } from '../api/types';
+import DiscordLinkSteps from '../components/DiscordLinkSteps';
 import { EmptyState, PageHead } from '../components/PageHead';
 import MonsterCombobox from '../components/MonsterCombobox';
 import MonsterImage from '../components/MonsterImage';
@@ -20,6 +21,7 @@ const INFO_MAX = 500;
 export default function ReportPage() {
   const toast = useToast();
   const characters = useAsync(endpoints.characters, []);
+  const me = useAsync(endpoints.me, []);
   const monsters = useAsync(endpoints.monsters, []);
   const cities = useAsync(endpoints.cities, []);
 
@@ -112,6 +114,24 @@ export default function ReportPage() {
         href="#characters"
         action="Go to characters"
       />
+    );
+  }
+
+  // The backend refuses reports from accounts without Discord: the bot could not tell which servers are theirs.
+  if (me.data && !me.data.discord_linked) {
+    return (
+      <div className="panel max-w-xl">
+        <div className="border-b-3 border-outline bg-discord px-6 py-5 text-discord-ink">
+          <h1>Link Discord to report Wardens</h1>
+        </div>
+        <div className="space-y-5 p-6">
+          <p className="text-muted">
+            Alerts go to the Discord servers you are on, so the bot needs to know your Discord account. Linking also gets you pinged about Wardens
+            your characters are missing.
+          </p>
+          <DiscordLinkSteps onCheck={me.reload} />
+        </div>
+      </div>
     );
   }
 

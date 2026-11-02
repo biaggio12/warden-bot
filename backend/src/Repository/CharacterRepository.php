@@ -69,6 +69,7 @@ class CharacterRepository extends ServiceEntityRepository
             FROM characters c
             JOIN users u ON u.id = c.user_id
             WHERE u.discord_user_id IS NOT NULL
+              AND u.blocked_at IS NULL
               AND c.server_name = :server
               AND NOT EXISTS (
                   SELECT 1 FROM character_killed_monsters k

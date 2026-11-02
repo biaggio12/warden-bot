@@ -48,7 +48,7 @@ final readonly class WardenSpawnedEvent
             locationDescription: $spawn->getLocationDescription(),
             city: $spawn->getCity(),
             additionalInfo: $spawn->getAdditionalInfo(),
-            reportedByDiscordUserId: (string) $spawn->getReportedBy()->getDiscordUserId(),
+            reportedByDiscordUserId: (string) $spawn->getReportedBy()?->getDiscordUserId(),
             reportedByCharacters: $reportedBy['characters'],
             reportedByName: $reportedBy['discord_name'],
             discordGuildId: $spawn->getDiscordGuildId(),

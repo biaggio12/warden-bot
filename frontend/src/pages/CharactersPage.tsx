@@ -1,36 +1,15 @@
-import { useState, type FormEvent } from 'react';
-import { ApiError } from '../api/client';
 import { endpoints } from '../api/endpoints';
-import DiscordButton from '../components/DiscordButton';
-import { CheckIcon, PlusIcon, TrashIcon } from '../components/Icons';
+import AddCharacterForm from '../components/AddCharacterForm';
+import DiscordLinkSteps from '../components/DiscordLinkSteps';
+import { CheckIcon, TrashIcon } from '../components/Icons';
 import { PageHead } from '../components/PageHead';
 import { useToast } from '../components/Toast';
 import { useAsync } from '../lib/useAsync';
-import { formatClock } from '../lib/time';
 
 export default function CharactersPage() {
   const toast = useToast();
   const characters = useAsync(endpoints.characters, []);
-  const worlds = useAsync(endpoints.worlds, []);
   const me = useAsync(endpoints.me, []);
-  const [name, setName] = useState('');
-  const [server, setServer] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [linkCode, setLinkCode] = useState<{ code: string; expires_at: string } | null>(null);
-
-  async function onAdd(event: FormEvent) {
-    event.preventDefault();
-    setErrors({});
-    try {
-      await endpoints.createCharacter(name.trim(), server);
-      setName('');
-      characters.reload();
-      toast(`Added ${name.trim()}.`, 'success');
-    } catch (err) {
-      if (err instanceof ApiError && err.problem?.violations) setErrors(err.fieldErrors);
-      else toast((err as Error).message, 'error');
-    }
-  }
 
   async function onDelete(id: string, characterName: string) {
     if (!window.confirm(`Delete ${characterName} together with their bestiary?`)) return;
@@ -42,54 +21,13 @@ export default function CharactersPage() {
     }
   }
 
-  async function onLink() {
-    try {
-      setLinkCode(await endpoints.discordLinkCode());
-    } catch (err) {
-      toast((err as Error).message, 'error');
-    }
-  }
-
   return (
     <>
       <PageHead title="Characters" lead="The bot only pings you about monsters your characters on that world are missing." />
 
       <div className="grid items-start gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <section className="panel p-5 sm:p-6">
-          <form onSubmit={onAdd} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
-            <div>
-              <input
-                className={`input ${errors.name ? 'border-hp' : ''}`}
-                placeholder="Character name"
-                aria-label="Character name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                minLength={2}
-                maxLength={30}
-              />
-              {errors.name && <p className="mt-1.5 text-sm font-medium text-hp">{errors.name}</p>}
-            </div>
-            <div>
-              <select
-                className={`input ${errors.server_name ? 'border-hp' : ''}`}
-                aria-label="World"
-                value={server}
-                onChange={(e) => setServer(e.target.value)}
-                required
-              >
-                <option value="">World…</option>
-                {worlds.data?.map((w) => (
-                  <option key={w}>{w}</option>
-                ))}
-              </select>
-              {errors.server_name && <p className="mt-1.5 text-sm font-medium text-hp">{errors.server_name}</p>}
-            </div>
-            <button className="btn-primary" type="submit">
-              <PlusIcon />
-              Add
-            </button>
-          </form>
+          <AddCharacterForm onAdded={characters.reload} />
 
           {characters.loading && !characters.data ? (
             <p className="mt-6 text-muted">Loading…</p>
@@ -144,23 +82,7 @@ export default function CharactersPage() {
                 </span>
               </p>
             ) : (
-              <div className="space-y-3">
-                <DiscordButton mode="link" label="Link with Discord" />
-                {linkCode ? (
-                  <div className="space-y-2 text-sm">
-                    <p className="text-muted">Type this on Discord:</p>
-                    <code className="block bg-paper px-3 py-2.5 font-mono text-base font-semibold select-all">/link code:{linkCode.code}</code>
-                    <p className="text-muted">Code valid until {formatClock(linkCode.expires_at)}.</p>
-                    <button type="button" className="btn w-full" onClick={me.reload}>
-                      Check connection
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button" className="btn w-full" onClick={onLink}>
-                    Generate a /link code
-                  </button>
-                )}
-              </div>
+              <DiscordLinkSteps onCheck={me.reload} />
             )}
           </div>
         </aside>

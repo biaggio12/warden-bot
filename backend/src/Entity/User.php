@@ -38,6 +38,10 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
+    /** Set by an admin: the account cannot log in, report or be pinged until unblocked. */
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $blockedAt = null;
+
     public function __construct(?string $email)
     {
         $this->email = null === $email ? null : mb_strtolower(trim($email));
@@ -112,6 +116,35 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->discordUsername = $discordUsername ?? $this->discordUsername;
         $this->discordLinkCode = null;
         $this->discordLinkCodeExpiresAt = null;
+    }
+
+    /** Admins only (the player may link again). The pending /link code goes too. */
+    public function unlinkDiscord(): void
+    {
+        $this->discordUserId = null;
+        $this->discordUsername = null;
+        $this->discordLinkCode = null;
+        $this->discordLinkCodeExpiresAt = null;
+    }
+
+    public function block(\DateTimeImmutable $now): void
+    {
+        $this->blockedAt ??= $now;
+    }
+
+    public function unblock(): void
+    {
+        $this->blockedAt = null;
+    }
+
+    public function isBlocked(): bool
+    {
+        return null !== $this->blockedAt;
+    }
+
+    public function getCreatedAt(): \DateTimeImmutable
+    {
+        return $this->createdAt;
     }
 
     public function eraseCredentials(): void

@@ -47,6 +47,9 @@ final class AuthController extends AbstractController
         if (null === $user || !$this->hasher->isPasswordValid($user, (string) $payload->password)) {
             return Problem::response(401, 'Invalid e-mail or password.');
         }
+        if ($user->isBlocked()) {
+            return Problem::accountBlocked();
+        }
 
         return $this->issueToken($user, 200);
     }

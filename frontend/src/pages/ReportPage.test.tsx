@@ -14,6 +14,9 @@ vi.mock('../api/endpoints', () => ({
     reportSpawn: vi.fn(),
     killSpawn: vi.fn(),
     discordGuilds: vi.fn(),
+    me: vi.fn(),
+    discordConfig: vi.fn(),
+    discordLinkCode: vi.fn(),
   },
 }));
 
@@ -37,6 +40,8 @@ describe('ReportPage', () => {
     ]);
     mocked.cities.mockResolvedValue(['Thais', 'Venore']);
     mocked.activeSpawns.mockResolvedValue([]);
+    mocked.me.mockResolvedValue({ id: 1, email: null, display_name: 'lukasz', discord_linked: true, discord_username: 'lukasz' });
+    mocked.discordConfig.mockResolvedValue({ enabled: true, authorize_url: 'https://discord.com/oauth2/authorize?client_id=1' });
     mocked.discordGuilds.mockResolvedValue([]);
   });
 
@@ -140,6 +145,23 @@ describe('ReportPage', () => {
 
     expect(mocked.discordGuilds).toHaveBeenCalledWith('Monza');
     expect(mocked.reportSpawn).toHaveBeenCalledWith(expect.objectContaining({ discord_guild_id: '100000000000000002' }));
+  });
+
+  it('asks an account without Discord to link it instead of showing the form', async () => {
+    const user = userEvent.setup();
+    mocked.me.mockResolvedValue({ id: 1, email: 'player@example.com', display_name: 'player@example.com', discord_linked: false, discord_username: null });
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Link Discord to report Wardens' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Report' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Link with Discord' })).toBeInTheDocument();
+
+    // Linked in the meantime (e.g. /link on Discord): checking shows the form.
+    mocked.discordLinkCode.mockResolvedValue({ code: 'ABCD2345', expires_at: '2026-11-02T12:10:00Z' });
+    await user.click(screen.getByRole('button', { name: 'Generate a /link code' }));
+    mocked.me.mockResolvedValue({ id: 1, email: 'player@example.com', display_name: 'player@example.com', discord_linked: true, discord_username: 'lukasz' });
+    await user.click(await screen.findByRole('button', { name: 'Check connection' }));
+    expect(await screen.findByRole('button', { name: 'Report' })).toBeInTheDocument();
   });
 
   it('defaults the TTL to 8 minutes', async () => {
