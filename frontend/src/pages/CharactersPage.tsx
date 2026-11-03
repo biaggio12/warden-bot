@@ -71,7 +71,7 @@ export default function CharactersPage() {
         <aside className="panel">
           <div className="border-b-3 border-outline bg-discord px-5 py-4 text-discord-ink">
             <h2>Discord</h2>
-            <p className="mt-1 text-sm">Pings in alerts, the “Killed” button and /report</p>
+            <p className="mt-1 text-sm">Pings in alerts, the “Killed” button and /warden</p>
           </div>
           <div className="p-5">
             {me.data?.discord_linked ? (

@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Repository\AlertChannelRepository;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\Cache\CacheInterface;
@@ -12,12 +13,14 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * The Discord servers a web report can be sent to: servers the bot is in, the player is a
- * member of, and that have the alert channel of the world (<prefix><world>). Read from the
- * Discord API with the bot token; disabled (empty list) while DISCORD_TOKEN is empty.
+ * member of, and that have an alert channel for the world: the one an admin assigned
+ * (AlertChannel), else the one named <prefix><world>. Read from the Discord API with the
+ * bot token; disabled (empty list) while DISCORD_TOKEN is empty.
  */
 final readonly class DiscordGuildDirectory
 {
     private const GUILD_TEXT = 0;
+    private const GUILD_CATEGORY = 4;
     private const TTL_SECONDS = 300;
 
     public function __construct(
@@ -29,6 +32,7 @@ final readonly class DiscordGuildDirectory
         private ?string $botToken,
         #[Autowire('%env(default::CHANNEL_PREFIX)%')]
         private ?string $channelPrefix,
+        private AlertChannelRepository $assignments,
     ) {
     }
 
@@ -47,10 +51,9 @@ final readonly class DiscordGuildDirectory
         }
 
         try {
-            $channel = strtolower($this->prefix().$world);
             $guilds = array_values(array_filter(
                 $this->botGuilds(),
-                fn (array $guild): bool => \in_array($channel, $this->textChannels($guild['id']), true)
+                fn (array $guild): bool => null !== $this->alertChannelOf($guild['id'], $world)
                     && $this->isMember($guild['id'], $discordUserId),
             ));
         } catch (ExceptionInterface $e) {
@@ -95,6 +98,62 @@ final readonly class DiscordGuildDirectory
         }
     }
 
+    /**
+     * Every server the bot is in with its text channels, for the admin's channel picker.
+     * `$refresh` reads Discord again instead of the copy cached for a few minutes.
+     *
+     * @return list<array{id: string, name: string, channels: list<array{id: string, name: string, category: ?string}>}>
+     */
+    public function serversWithChannels(bool $refresh = false): array
+    {
+        if ($refresh) {
+            $this->cache->delete('discord.bot_guilds');
+        }
+        $servers = [];
+        foreach ($this->botGuilds() as $guild) {
+            if ($refresh) {
+                $this->cache->delete("discord.guild_text_channels.{$guild['id']}");
+            }
+            $servers[] = $guild + ['channels' => $this->textChannels($guild['id'])];
+        }
+        usort($servers, static fn (array $a, array $b): int => strcasecmp($a['name'], $b['name']));
+
+        return $servers;
+    }
+
+    /**
+     * The text channel of this server that gets the world's alerts, or null when none.
+     *
+     * @return array{id: string, name: string, category: ?string}|null
+     */
+    public function alertChannelOf(string $guildId, string $world): ?array
+    {
+        $channels = $this->textChannels($guildId);
+        $assigned = $this->assignments->findOneByGuildAndWorld($guildId, $world);
+        if (null !== $assigned) {
+            foreach ($channels as $channel) {
+                if ($channel['id'] === $assigned->getChannelId()) {
+                    return $channel;
+                }
+            }
+
+            return null;
+        }
+        $name = strtolower($this->prefix().$world);
+        foreach ($channels as $channel) {
+            if (strtolower($channel['name']) === $name) {
+                return $channel;
+            }
+        }
+
+        return null;
+    }
+
+    public function prefix(): string
+    {
+        return $this->channelPrefix ?? 'wardens-';
+    }
+
     /** @return list<array{id: string, name: string}> */
     private function botGuilds(): array
     {
@@ -108,14 +167,31 @@ final readonly class DiscordGuildDirectory
         });
     }
 
-    /** @return list<string> lowercase names of the server's text channels */
+    /** @return list<array{id: string, name: string, category: ?string}> the server's text channels, in Discord's order */
     private function textChannels(string $guildId): array
     {
-        return $this->cache->get("discord.guild_channels.$guildId", function (ItemInterface $item) use ($guildId): array {
+        return $this->cache->get("discord.guild_text_channels.$guildId", function (ItemInterface $item) use ($guildId): array {
             $item->expiresAfter(self::TTL_SECONDS);
-            $channels = array_filter($this->request("guilds/$guildId/channels"), static fn (array $c): bool => self::GUILD_TEXT === ($c['type'] ?? null));
+            $all = $this->request("guilds/$guildId/channels");
+            $categories = [];
+            foreach ($all as $c) {
+                if (self::GUILD_CATEGORY === ($c['type'] ?? null)) {
+                    $categories[(string) $c['id']] = ['name' => (string) $c['name'], 'position' => (int) ($c['position'] ?? 0)];
+                }
+            }
+            $channels = array_values(array_filter($all, static fn (array $c): bool => self::GUILD_TEXT === ($c['type'] ?? null)));
+            // Discord's sidebar order: channels outside a category first, then by category.
+            $order = static fn (array $c): array => [
+                null === ($c['parent_id'] ?? null) ? -1 : ($categories[(string) $c['parent_id']]['position'] ?? 0),
+                (int) ($c['position'] ?? 0),
+            ];
+            usort($channels, static fn (array $a, array $b): int => $order($a) <=> $order($b));
 
-            return array_values(array_map(static fn (array $c): string => strtolower((string) $c['name']), $channels));
+            return array_map(static fn (array $c): array => [
+                'id' => (string) ($c['id'] ?? ''),
+                'name' => (string) $c['name'],
+                'category' => $categories[(string) ($c['parent_id'] ?? '')]['name'] ?? null,
+            ], $channels);
         });
     }
 
@@ -128,11 +204,5 @@ final readonly class DiscordGuildDirectory
     private function token(): string
     {
         return (string) preg_replace('/^Bot\s+/i', '', trim((string) $this->botToken));
-    }
-
-    /** Same default as the bot's CHANNEL_PREFIX. */
-    private function prefix(): string
-    {
-        return $this->channelPrefix ?? 'wardens-';
     }
 }

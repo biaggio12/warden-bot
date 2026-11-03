@@ -42,7 +42,7 @@ class WardenSpawn
     #[ORM\JoinColumn(name: 'reported_by_user_id', nullable: true, onDelete: 'SET NULL')]
     private ?User $reportedBy;
 
-    /** Discord server the report came from (/report); the alert is posted there only. */
+    /** Discord server the report came from (/warden); the alert is posted there only. */
     #[ORM\Column(length: 20, nullable: true)]
     private ?string $discordGuildId;
 

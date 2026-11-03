@@ -28,7 +28,7 @@ final class AccountController extends AbstractController
     #[Route('', name: 'api_me', methods: ['GET'])]
     public function me(#[CurrentUser] User $user, AdminPolicy $admins): JsonResponse
     {
-        return $this->json(Json::user($user) + ['is_admin' => $admins->isAdmin($user)]);
+        return $this->json(Json::user($user) + ['is_admin' => $admins->isAdmin($user), 'is_moderator' => $admins->isModerator($user)]);
     }
 
     /**

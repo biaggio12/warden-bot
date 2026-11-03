@@ -1,6 +1,7 @@
 import { sentryEnabled } from './instrument.js';
 import * as Sentry from '@sentry/node';
 import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
+import { AlertChannels } from './alertChannels.js';
 import { AlertPresence } from './alertPresence.js';
 import { ApiClient } from './api.js';
 import { loadConfig, type Config } from './config.js';
@@ -37,8 +38,10 @@ async function main(): Promise<void> {
     load: (spawnId, messageId) => api.getPresence(spawnId, messageId),
     save: (spawnId, messageId, lists) => api.savePresence(spawnId, messageId, lists),
   });
+  const channels = new AlertChannels(() => api.getAlertChannels(), config.channelPrefix);
   const notifier = new Notifier(client, api, catalog, {
     channelPrefix: config.channelPrefix,
+    channels,
     directMessages: config.directMessages,
     deleteExpired: config.deleteExpired,
     pingCleanupMs: config.pingCleanupMs,
@@ -51,7 +54,7 @@ async function main(): Promise<void> {
   );
 
   if (client) {
-    const interactions = new InteractionHandler(api, catalog, config.frontendUrl, config.channelPrefix, presence);
+    const interactions = new InteractionHandler(api, catalog, config.frontendUrl, config.channelPrefix, presence, channels);
 
     client.once(Events.ClientReady, (ready) => {
       console.info(`[discord] Logged in as ${ready.user.tag} in ${ready.guilds.cache.size} guild(s)`);
@@ -72,6 +75,8 @@ async function main(): Promise<void> {
       await notifier.onSpawned(event.data);
     } else if (event.event === 'warden.killed') {
       await notifier.onKilled(event.data);
+    } else if (event.event === 'warden.deleted') {
+      await notifier.onDeleted(event.data);
     } else {
       await notifier.onExpired(event.data);
     }

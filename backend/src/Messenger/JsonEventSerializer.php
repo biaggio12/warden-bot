@@ -2,6 +2,7 @@
 
 namespace App\Messenger;
 
+use App\Message\WardenDeletedEvent;
 use App\Message\WardenExpiredEvent;
 use App\Message\WardenKilledEvent;
 use App\Message\WardenSpawnedEvent;
@@ -20,6 +21,7 @@ final class JsonEventSerializer implements SerializerInterface
     public const SPAWNED = 'warden.spawned';
     public const EXPIRED = 'warden.expired';
     public const KILLED = 'warden.killed';
+    public const DELETED = 'warden.deleted';
 
     public function encode(Envelope $envelope): array
     {
@@ -57,6 +59,10 @@ final class JsonEventSerializer implements SerializerInterface
                 'server_name' => $message->serverName,
                 'killed_by_discord_user_id' => '' !== $message->killedByDiscordUserId ? $message->killedByDiscordUserId : null,
                 'killed_by_name' => $message->killedByName,
+            ]],
+            $message instanceof WardenDeletedEvent => [self::DELETED, [
+                'spawn_id' => $message->spawnId,
+                'server_name' => $message->serverName,
             ]],
             default => throw new \InvalidArgumentException(\sprintf('Message "%s" is not an integration event.', $message::class)),
         };
@@ -110,6 +116,10 @@ final class JsonEventSerializer implements SerializerInterface
                     serverName: $data['server_name'],
                     killedByDiscordUserId: (string) ($data['killed_by_discord_user_id'] ?? ''),
                     killedByName: $data['killed_by_name'] ?? null,
+                ),
+                self::DELETED => new WardenDeletedEvent(
+                    spawnId: $data['spawn_id'],
+                    serverName: $data['server_name'],
                 ),
                 default => throw new MessageDecodingFailedException('Unknown event type.'),
             };

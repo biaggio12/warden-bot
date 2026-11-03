@@ -17,6 +17,8 @@ interface Entry {
   expired: boolean;
   /** Reported dead: the alert already shows it, expiry only removes it. */
   killed: boolean;
+  /** Deleted by an admin: its messages are gone, nothing more to do. */
+  deleted: boolean;
 }
 
 /**
@@ -40,7 +42,7 @@ export class SpawnRegistry {
     const delay = Math.max(0, new Date(spawn.expires_at).getTime() - Date.now());
     const timer = setTimeout(() => void this.expire(spawn.spawn_id), delay);
     timer.unref();
-    this.entries.set(spawn.spawn_id, { spawn, messages: [], timer, expired: false, killed: false });
+    this.entries.set(spawn.spawn_id, { spawn, messages: [], timer, expired: false, killed: false, deleted: false });
   }
 
   addMessage(spawnId: string, message: SentMessage): void {
@@ -66,6 +68,28 @@ export class SpawnRegistry {
     }
     entry.killed = true;
     return true;
+  }
+
+  /**
+   * An admin deleted the report: stops its expiry and hands back its messages to delete,
+   * once (null when not tracked or already deleted). Kept a while so a redelivered
+   * warden.spawned is still recognised.
+   */
+  discard(spawnId: string): SentMessage[] | null {
+    const entry = this.entries.get(spawnId);
+    if (!entry || entry.deleted) {
+      return null;
+    }
+    entry.deleted = true;
+    if (!entry.expired) {
+      entry.expired = true;
+      if (entry.timer) {
+        clearTimeout(entry.timer);
+      }
+      const cleanup = setTimeout(() => this.entries.delete(spawnId), this.retentionMs);
+      cleanup.unref();
+    }
+    return entry.messages;
   }
 
   isExpired(spawnId: string): boolean {

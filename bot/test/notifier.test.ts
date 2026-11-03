@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../src/api.js';
 import type { WardenKilled } from '../src/events.js';
 import type { MonsterCatalog } from '../src/monsterCatalog.js';
+import { AlertChannels } from '../src/alertChannels.js';
 import { AlertPresence } from '../src/alertPresence.js';
 import { Notifier, type NotifierOptions } from '../src/notifier.js';
 import { buildSpawnMessage, withPresence, type Presence } from '../src/messages.js';
@@ -395,15 +396,54 @@ describe('Notifier', () => {
   });
 });
 
+describe('Notifier when an admin deletes a report', () => {
+  let notifier: Notifier | null = null;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-29T12:00:00Z'));
+  });
+  afterEach(() => {
+    notifier?.dispose();
+    vi.useRealTimers();
+  });
+
+  it('deletes the alert at once, also when it would only be disabled on expiry', async () => {
+    const ctx = setup({ deleteExpired: false });
+    notifier = ctx.notifier;
+    await notifier.onSpawned(spawnFixture());
+
+    await notifier.onDeleted({ spawn_id: spawnFixture().spawn_id, server_name: 'Monza' });
+    await notifier.onDeleted({ spawn_id: spawnFixture().spawn_id, server_name: 'Monza' }); // redelivered
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(ctx.channelMessages.delete).toHaveBeenCalledExactlyOnceWith('msg-1');
+    // The expiry no longer touches it.
+    expect(ctx.channelMessages.edit).not.toHaveBeenCalled();
+  });
+
+  it('finds an alert from before a restart in the channel history, also one already marked dead', async () => {
+    const target = liveAlert('old', spawnFixture({ spawn_id: 'old-run-spawn' }));
+    const other = liveAlert('other', spawnFixture({ spawn_id: 'other-spawn' }));
+    const ctx = setup({}, [target, other] as never);
+    notifier = ctx.notifier;
+
+    await notifier.onDeleted({ spawn_id: 'old-run-spawn', server_name: 'Monza' });
+
+    expect(target.delete).toHaveBeenCalledOnce();
+    expect(other.delete).not.toHaveBeenCalled();
+  });
+});
+
 describe('Notifier with the bot on several servers', () => {
   let notifier: Notifier | null = null;
   afterEach(() => notifier?.dispose());
 
-  function twoServers(membersOfB: string[] = []) {
-    const guilds = ['guild-a', 'guild-b'].map((id) => {
+  function twoServers(membersOfB: string[] = [], channels?: AlertChannels, names = { 'guild-a': 'wardens-monza', 'guild-b': 'wardens-monza' }) {
+    const guilds = (['guild-a', 'guild-b'] as const).map((id) => {
       const channel = {
         id: `chan-${id}`,
-        name: 'wardens-monza',
+        name: names[id],
         type: ChannelType.GuildText,
         guild: {
           id,
@@ -422,11 +462,32 @@ describe('Notifier with the bot on several servers', () => {
       directMessages: false,
       deleteExpired: true,
       pingCleanupMs: 1_000,
+      channels,
     });
     return { notifier, a: guilds[0]!.channel, b: guilds[1]!.channel };
   }
 
-  it('posts a /report only on the server it was used in', async () => {
+  it('posts to the channel chosen on the website, whatever its name', async () => {
+    const channels = new AlertChannels(async () => [{ guild_id: 'guild-a', server_name: 'Monza', channel_id: 'chan-guild-a' }], 'wardens-');
+    const { notifier, a, b } = twoServers([], channels, { 'guild-a': 'alerts', 'guild-b': 'wardens-monza' });
+
+    await notifier.onSpawned(spawnFixture());
+
+    expect(a.send).toHaveBeenCalledOnce();
+    expect(b.send).toHaveBeenCalledOnce();
+  });
+
+  it('skips the named channel of a server where another channel was chosen', async () => {
+    const channels = new AlertChannels(async () => [{ guild_id: 'guild-a', server_name: 'Monza', channel_id: 'deleted-channel' }], 'wardens-');
+    const { notifier, a, b } = twoServers([], channels);
+
+    await notifier.onSpawned(spawnFixture());
+
+    expect(a.send).not.toHaveBeenCalled();
+    expect(b.send).toHaveBeenCalledOnce();
+  });
+
+  it('posts a /warden only on the server it was used in', async () => {
     const { notifier, a, b } = twoServers();
 
     await notifier.onSpawned(spawnFixture({ discord_guild_id: 'guild-b' }));

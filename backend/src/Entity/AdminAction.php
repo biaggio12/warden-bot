@@ -26,16 +26,18 @@ class AdminAction
 
     public function __construct(
         User $admin,
-        User $player,
+        ?User $player,
         #[ORM\Column(length: 40)]
         private string $action,
         #[ORM\Column(length: 255, nullable: true)]
         private ?string $details,
         #[ORM\Column]
         private \DateTimeImmutable $createdAt,
+        /** What the action was done to when it is not an account (e.g. a Discord server). */
+        ?string $target = null,
     ) {
         $this->adminName = $admin->getDisplayName();
-        $this->playerName = $player->getDisplayName();
+        $this->playerName = mb_substr($target ?? $player?->getDisplayName() ?? 'deleted account', 0, 180);
     }
 
     /** @return array{id: int|null, admin: string, player: string, action: string, details: string|null, created_at: \DateTimeImmutable} */

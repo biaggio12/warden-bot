@@ -42,6 +42,10 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $blockedAt = null;
 
+    /** Granted by an admin on the website: the Players tab, without the admin-only actions. */
+    #[ORM\Column(options: ['default' => false])]
+    private bool $moderator = false;
+
     public function __construct(?string $email)
     {
         $this->email = null === $email ? null : mb_strtolower(trim($email));
@@ -140,6 +144,16 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function isBlocked(): bool
     {
         return null !== $this->blockedAt;
+    }
+
+    public function isModerator(): bool
+    {
+        return $this->moderator;
+    }
+
+    public function setModerator(bool $moderator): void
+    {
+        $this->moderator = $moderator;
     }
 
     public function getCreatedAt(): \DateTimeImmutable

@@ -21,7 +21,7 @@ export interface WardenSpawned {
   reported_by_characters: string[];
   /** Discord username; absent in events from older backends. */
   reported_by_name: string | null;
-  /** Server the report came from (/report): the alert goes there only. null for web reports. */
+  /** Server the report came from (/warden): the alert goes there only. null for web reports. */
   discord_guild_id: string | null;
   created_at: string;
   expires_at: string;
@@ -32,6 +32,12 @@ export interface WardenExpired {
   monster_id: number;
   server_name: string;
   expires_at: string;
+}
+
+/** An admin deleted the report (false or duplicate): its alerts are deleted. */
+export interface WardenDeleted {
+  spawn_id: string;
+  server_name: string;
 }
 
 /** A player closed the report early: the Warden is dead, the alert comes down. */
@@ -47,7 +53,8 @@ export interface WardenKilled {
 export type WardenEvent =
   | { event: 'warden.spawned'; occurred_at: string; data: WardenSpawned }
   | { event: 'warden.expired'; occurred_at: string; data: WardenExpired }
-  | { event: 'warden.killed'; occurred_at: string; data: WardenKilled };
+  | { event: 'warden.killed'; occurred_at: string; data: WardenKilled }
+  | { event: 'warden.deleted'; occurred_at: string; data: WardenDeleted };
 
 export class InvalidEventError extends Error {}
 
@@ -143,6 +150,15 @@ export function parseEvent(raw: string): WardenEvent {
           server_name: expectString(data, 'server_name'),
           killed_by_discord_user_id: optionalString(data, 'killed_by_discord_user_id'),
           killed_by_name: optionalString(data, 'killed_by_name'),
+        },
+      };
+    case 'warden.deleted':
+      return {
+        event: 'warden.deleted',
+        occurred_at: occurredAt,
+        data: {
+          spawn_id: expectString(data, 'spawn_id'),
+          server_name: expectString(data, 'server_name'),
         },
       };
     default:

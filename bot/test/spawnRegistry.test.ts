@@ -35,6 +35,22 @@ describe('SpawnRegistry', () => {
     expect(registry.isExpired('c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b')).toBe(true);
   });
 
+  it('discards a deleted report once, without expiring it later', async () => {
+    const onExpire = vi.fn().mockResolvedValue(undefined);
+    const registry = new SpawnRegistry(onExpire);
+    registry.register(spawnFixture());
+    registry.addMessage('c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b', { channelId: 'c1', messageId: 'm1' });
+
+    expect(registry.discard('c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b')).toEqual([{ channelId: 'c1', messageId: 'm1' }]);
+    expect(registry.discard('c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b')).toBeNull();
+    expect(registry.markKilled('c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b')).toBe(false);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(onExpire).not.toHaveBeenCalled();
+    expect(registry.get('c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b')).not.toBeNull(); // a redelivered spawn is still recognised
+    expect(registry.discard('unknown')).toBeNull();
+  });
+
   it('ignores unknown spawns', async () => {
     const registry = new SpawnRegistry(vi.fn());
     expect(await registry.expire('unknown')).toBe(false);

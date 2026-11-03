@@ -26,7 +26,7 @@ export default function ReportPage() {
   const cities = useAsync(endpoints.cities, []);
 
   // No world picker: reports go to the world where the player has the most characters
-  // (ties: alphabetical). Other worlds are reported with /report in that world's Discord channel.
+  // (ties: alphabetical). Other worlds are reported with /warden in that world's Discord channel.
   const server = useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of characters.data ?? []) counts.set(c.server_name, (counts.get(c.server_name) ?? 0) + 1);

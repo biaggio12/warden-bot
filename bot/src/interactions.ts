@@ -9,6 +9,7 @@ import {
   type StringSelectMenuInteraction,
 } from 'discord.js';
 import * as Sentry from '@sentry/node';
+import { AlertChannels } from './alertChannels.js';
 import { AlertPresence } from './alertPresence.js';
 import { ApiError, type ApiClient } from './api.js';
 import {
@@ -56,13 +57,14 @@ export class InteractionHandler {
     private readonly frontendUrl: string,
     channelPrefix = 'wardens-',
     private readonly presence = new AlertPresence(),
+    channels = new AlertChannels(async () => [], channelPrefix),
   ) {
-    this.report = new ReportCommand(api, catalog, channelPrefix);
+    this.report = new ReportCommand(api, catalog, channelPrefix, channels);
   }
 
   async handle(interaction: Interaction): Promise<void> {
     if (interaction.isAutocomplete()) {
-      if (interaction.commandName === 'report') {
+      if (interaction.commandName === 'warden') {
         await this.report.autocomplete(interaction).catch((error) => console.warn('[interaction] Autocomplete failed:', error));
       }
       return;
@@ -70,7 +72,7 @@ export class InteractionHandler {
     try {
       if (interaction.isChatInputCommand() && interaction.commandName === 'link') {
         await this.handleLink(interaction);
-      } else if (interaction.isChatInputCommand() && interaction.commandName === 'report') {
+      } else if (interaction.isChatInputCommand() && interaction.commandName === 'warden') {
         await this.report.execute(interaction);
       } else if (interaction.isButton() && parseGoneCustomId(interaction.customId)) {
         await this.handleGone(interaction, parseGoneCustomId(interaction.customId)!);
@@ -107,7 +109,7 @@ export class InteractionHandler {
     const code = interaction.options.getString('code', true);
     const { display_name: account } = await this.api.linkDiscord(code, interaction.user.id);
     await interaction.editReply(
-      `🔗 Linked to **${escapeMarkdown(account)}**. You will now be pinged about Wardens your characters are missing, and you can report them with \`/report\`.`,
+      `🔗 Linked to **${escapeMarkdown(account)}**. You will now be pinged about Wardens your characters are missing, and you can report them with \`/warden\`.`,
     );
   }
 

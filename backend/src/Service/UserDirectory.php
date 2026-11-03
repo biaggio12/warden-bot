@@ -27,12 +27,12 @@ final readonly class UserDirectory
     /**
      * Newest accounts first.
      *
-     * @return list<array{id: int, email: ?string, discord_username: ?string, discord_linked: bool, is_admin: bool, blocked: bool, created_at: string, characters: list<array{id: string, name: string, server_name: string}>, reports: int, last_report_at: ?string, bestiary_marks: int}>
+     * @return list<array{id: int, email: ?string, discord_username: ?string, discord_linked: bool, is_admin: bool, is_moderator: bool, blocked: bool, created_at: string, characters: list<array{id: string, name: string, server_name: string}>, reports: int, last_report_at: ?string, bestiary_marks: int}>
      */
     public function all(?int $only = null): array
     {
         $rows = $this->db->fetchAllAssociative(
-            'SELECT u.id, u.email, u.discord_username, u.discord_user_id, u.created_at, u.blocked_at,
+            'SELECT u.id, u.email, u.discord_username, u.discord_user_id, u.created_at, u.blocked_at, u.moderator,
                     (SELECT COUNT(*) FROM warden_spawns s WHERE s.reported_by_user_id = u.id) AS reports,
                     (SELECT MAX(s.created_at) FROM warden_spawns s WHERE s.reported_by_user_id = u.id) AS last_report_at,
                     (SELECT COUNT(*) FROM character_killed_monsters k JOIN characters c ON c.id = k.character_id
@@ -53,6 +53,7 @@ final readonly class UserDirectory
             'discord_username' => $r['discord_username'],
             'discord_linked' => null !== $r['discord_user_id'],
             'is_admin' => $this->admins->isDiscordIdAdmin($r['discord_user_id']),
+            'is_moderator' => (bool) $r['moderator'] && !$this->admins->isDiscordIdAdmin($r['discord_user_id']),
             'blocked' => null !== $r['blocked_at'],
             'created_at' => self::iso((string) $r['created_at']),
             'characters' => $characters[(int) $r['id']] ?? [],

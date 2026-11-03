@@ -47,7 +47,7 @@ final readonly class CreateWardenSpawnRequest
 
         ?string $additionalInfo = null,
 
-        /** Set by the bot for /report: the Discord server the alert belongs to. */
+        /** Set by the bot for /warden: the Discord server the alert belongs to. */
         #[SerializedName('discord_guild_id')]
         #[Assert\Regex('/^\d{17,20}$/', message: 'Not a Discord server id.')]
         public ?string $discordGuildId = null,

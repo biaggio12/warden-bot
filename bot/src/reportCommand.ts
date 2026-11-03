@@ -8,6 +8,7 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type { ApiClient } from './api.js';
+import { AlertChannels } from './alertChannels.js';
 import { rankMatches, type MonsterCatalog } from './monsterCatalog.js';
 
 /** A Warden disappears on its own 10 minutes after it shows up. */
@@ -18,7 +19,7 @@ const DEFAULT_TTL = 8;
 export class UserError extends Error {}
 
 export const reportCommand = new SlashCommandBuilder()
-  .setName('report')
+  .setName('warden')
   .setDescription('Report a Warden - an alert with pings goes to #wardens-<world>')
   .addStringOption((o) => o.setName('monster').setDescription('Which Warden appeared').setRequired(true).setAutocomplete(true))
   .addStringOption((o) => o.setName('city').setDescription('The nearest city').setRequired(true).setAutocomplete(true))
@@ -34,7 +35,7 @@ export const reportCommand = new SlashCommandBuilder()
   .addStringOption((o) => o.setName('info').setDescription('Additional info (optional)').setMaxLength(500));
 
 /**
- * /report reports a Warden as the linked player. The backend publishes the event and
+ * /warden reports a Warden as the linked player. The backend publishes the event and
  * the regular alert (with pings) follows, exactly as for a report from the web app.
  */
 export class ReportCommand {
@@ -42,6 +43,7 @@ export class ReportCommand {
     private readonly api: ApiClient,
     private readonly catalog: MonsterCatalog,
     private readonly channelPrefix: string,
+    private readonly channels = new AlertChannels(async () => [], channelPrefix),
   ) {}
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -75,7 +77,7 @@ export class ReportCommand {
       `✅ Reported **${escapeMarkdown(spawn.monster.name)}** on **${spawn.server_name}** ` +
         `(${escapeMarkdown([spawn.city, spawn.location_description].filter(Boolean).join(' — '))}). ` +
         `It disappears ${time(new Date(spawn.expires_at), TimestampStyles.RelativeTime)}. ` +
-        `The alert with pings will appear in #${this.channelPrefix}${spawn.server_name.toLowerCase()}.`,
+        `The alert with pings will appear in ${await this.channels.describe(interaction.guildId, spawn.server_name)}.`,
     );
   }
 
@@ -97,17 +99,18 @@ export class ReportCommand {
   }
 
   /**
-   * The world in the channel name (#wardens-monza), else the world where the player has
-   * the most characters (ties: alphabetical) - the same rule as the web app's form.
+   * The world whose alerts this channel gets (chosen on the website, or in the name like
+   * #wardens-monza), else the world where the player has the most characters (ties:
+   * alphabetical) - the same rule as the web app's form.
    */
   private async resolveWorld(interaction: ChatInputCommandInteraction): Promise<string> {
-    const channelName = interaction.channel && 'name' in interaction.channel ? interaction.channel.name : null;
-    if (channelName?.startsWith(this.channelPrefix)) {
-      const name = channelName.slice(this.channelPrefix.length);
-      const fromChannel = (await this.catalog.worlds.get()).find((w) => w.toLowerCase() === name.toLowerCase());
-      if (fromChannel) {
-        return fromChannel;
-      }
+    const channel =
+      interaction.channel && 'name' in interaction.channel
+        ? { id: interaction.channel.id, name: interaction.channel.name ?? '', guild: { id: interaction.guildId ?? '' } }
+        : null;
+    const fromChannel = channel ? await this.channels.worldOf(channel, await this.catalog.worlds.get()) : null;
+    if (fromChannel) {
+      return fromChannel;
     }
 
     const counts = new Map<string, number>();
@@ -116,7 +119,7 @@ export class ReportCommand {
     }
     const [world] = [...counts].sort(([a, x], [b, y]) => y - x || a.localeCompare(b))[0] ?? [];
     if (!world) {
-      throw new UserError(`You have no characters yet. Add one in the web app, or use /report in a #${this.channelPrefix}<world> channel.`);
+      throw new UserError(`You have no characters yet. Add one in the web app, or use /warden in a #${this.channelPrefix}<world> channel.`);
     }
     return world;
   }

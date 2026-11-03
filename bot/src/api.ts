@@ -3,6 +3,7 @@
  * on behalf of a player add X-Discord-User-Id so the backend applies that player's
  * permissions (e.g. the character ownership voter).
  */
+import type { ChannelAssignment } from './alertChannels.js';
 import type { Presence } from './messages.js';
 
 export interface CharacterRef {
@@ -29,7 +30,7 @@ export interface SpawnReport {
   location_description: string;
   additional_info: string | null;
   ttl_minutes: number;
-  /** The server /report was used in; the alert is posted there only. */
+  /** The server /warden was used in; the alert is posted there only. */
   discord_guild_id: string | null;
 }
 
@@ -79,6 +80,11 @@ export class ApiClient {
 
   private presencePath(spawnId: string, messageId: string): string {
     return `/internal/warden-spawns/${encodeURIComponent(spawnId)}/presence/${encodeURIComponent(messageId)}`;
+  }
+
+  /** The channels admins chose on the website per server and world. */
+  async getAlertChannels(): Promise<ChannelAssignment[]> {
+    return (await this.request<{ alert_channels: ChannelAssignment[] }>('GET', '/internal/alert-channels')).alert_channels;
   }
 
   async getMonsters(): Promise<Monster[]> {

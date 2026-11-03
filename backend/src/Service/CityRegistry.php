@@ -8,9 +8,9 @@ namespace App\Service;
 final class CityRegistry
 {
     private const CITIES = [
-        "Ab'Dendriel", 'Ankrahmun', 'Carlin', 'Darashia', 'Edron', 'Farmine', 'Feyrist', 'Gray Beach',
-        'Issavi', 'Kazordoon', 'Krailos', 'Liberty Bay', 'Marapur', 'Port Hope', 'Rathleton', 'Roshamuul',
-        'Svargrond', 'Thais', 'Venore', 'Yalahar',
+        "Ab'Dendriel", 'Ankrahmun', 'Candia', 'Carlin', 'Darashia', 'Edron', 'Farmine', 'Feyrist', 'Gnomebase',
+        'Gray Beach', 'Issavi', 'Kazordoon', 'Kilmaresh', 'Krailos', 'Liberty Bay', 'Marapur', 'Oramond',
+        'Port Hope', 'Rascacoon', 'Rathleton', 'Roshamuul', 'Svargrond', 'Thais', 'Venore', 'Yalahar',
     ];
 
     /**

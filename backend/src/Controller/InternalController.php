@@ -5,7 +5,9 @@ namespace App\Controller;
 use App\Dto\LinkDiscordRequest;
 use App\Dto\UpdatePresenceRequest;
 use App\Entity\WardenSpawnPresence;
+use App\Entity\AlertChannel;
 use App\Http\Problem;
+use App\Repository\AlertChannelRepository;
 use App\Repository\CharacterRepository;
 use App\Repository\UserRepository;
 use App\Repository\WardenSpawnPresenceRepository;
@@ -23,6 +25,13 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/api/v1/internal')]
 final class InternalController extends AbstractController
 {
+    /** The channels admins chose per server and world (the rest go by channel name). */
+    #[Route('/alert-channels', name: 'api_internal_alert_channels', methods: ['GET'])]
+    public function alertChannels(AlertChannelRepository $assignments): JsonResponse
+    {
+        return $this->json(['alert_channels' => array_map(static fn (AlertChannel $a): array => $a->toArray(), $assignments->all())]);
+    }
+
     /**
      * Who should get a DM about this spawn: linked players with a character on the
      * spawn's world that has not killed the monster yet.

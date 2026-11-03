@@ -63,6 +63,12 @@ describe('parseEvent', () => {
     });
   });
 
+  it('parses warden.deleted', () => {
+    const event = parseEvent(JSON.stringify({ event: 'warden.deleted', occurred_at: '2026-11-02T10:00:00Z', data: { spawn_id: 'abc', server_name: 'Monza' } }));
+
+    expect(event).toEqual({ event: 'warden.deleted', occurred_at: '2026-11-02T10:00:00Z', data: { spawn_id: 'abc', server_name: 'Monza' } });
+  });
+
   it.each([
     ['not json', '{'],
     ['unknown event', JSON.stringify({ event: 'other', data: {} })],

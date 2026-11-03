@@ -1,7 +1,8 @@
 import { ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Client, type Message, type TextChannel } from 'discord.js';
+import { AlertChannels } from './alertChannels.js';
 import { AlertPresence } from './alertPresence.js';
 import type { ApiClient } from './api.js';
-import type { WardenExpired, WardenKilled, WardenSpawned } from './events.js';
+import type { WardenDeleted, WardenExpired, WardenKilled, WardenSpawned } from './events.js';
 import {
   alertHeadline,
   allButtonsDisabled,
@@ -27,8 +28,10 @@ const DM_CONCURRENCY = 5;
 const SWEEP_MESSAGE_LIMIT = 100;
 
 export interface NotifierOptions {
-  /** Alerts go to text channels named `<prefix><world>`. */
+  /** Alerts go to text channels named `<prefix><world>`, unless an admin chose another one. */
   channelPrefix: string;
+  /** The channels admins chose on the website (shared with the /warden command). */
+  channels?: AlertChannels;
   /** Targeted DMs to players who still need the monster. */
   directMessages: boolean;
   /** On expiry delete the alert; otherwise keep it with its buttons disabled. */
@@ -51,6 +54,7 @@ export class Notifier {
   readonly registry: SpawnRegistry;
   private readonly bestiaryUrl: string | undefined;
   private readonly presence: AlertPresence;
+  private readonly channels: AlertChannels;
   private readonly timers = new Set<NodeJS.Timeout>();
   /** Reports whose alerts are still being posted; a kill or expiry of one waits for it. */
   private readonly announcing = new Map<string, Promise<void>>();
@@ -63,6 +67,7 @@ export class Notifier {
   ) {
     this.bestiaryUrl = options.frontendUrl ? bestiaryUrlOf(options.frontendUrl) : undefined;
     this.presence = options.presence ?? new AlertPresence();
+    this.channels = options.channels ?? new AlertChannels(async () => [], options.channelPrefix);
     this.registry = new SpawnRegistry((spawn, messages, reason) => this.expireMessages(spawn, messages, reason));
   }
 
@@ -97,7 +102,7 @@ export class Notifier {
 
     const channels = await this.channelsFor(spawn);
     if (channels.length === 0) {
-      console.warn(`[notify] No #${this.channelName(spawn.server_name)} channel for this report`);
+      console.warn(`[notify] No alert channel for ${spawn.server_name} (#${this.channelName(spawn.server_name)} or one chosen on the website) for this report`);
     }
     for (const channel of channels) {
       await this.postAlert(channel, spawn, mentionIds);
@@ -122,12 +127,12 @@ export class Notifier {
   }
 
   /**
-   * Where a report is announced. A /report goes to the server it was used in only. A web
+   * Where a report is announced. A /warden goes to the server it was used in only. A web
    * report goes to the servers the reporter is a member of; only when the reporter has no
    * linked Discord account (nothing to tell servers apart by) does it go to every server.
    */
   private async channelsFor(spawn: WardenSpawned): Promise<TextChannel[]> {
-    const channels = this.alertChannels(spawn.server_name);
+    const channels = await this.alertChannels(spawn.server_name);
     if (spawn.discord_guild_id) {
       return channels.filter((channel) => channel.guild.id === spawn.discord_guild_id);
     }
@@ -228,6 +233,43 @@ export class Notifier {
     console.info(`[notify] Spawn ${event.spawn_id} reported killed: ${alerts.length} alert(s) updated`);
   }
 
+  /**
+   * An admin deleted the report: its alerts (channel and DMs) are deleted at once, whatever
+   * their state. Alerts the registry does not know (posted before a restart) are looked up
+   * in the channel history.
+   */
+  async onDeleted(event: WardenDeleted): Promise<void> {
+    if (!this.client?.user) {
+      console.info(`[dry-run] Spawn ${event.spawn_id} @ ${event.server_name} deleted`);
+      return;
+    }
+    await this.announcing.get(event.spawn_id)?.catch(() => undefined);
+    let deleted = 0;
+    const tracked = this.registry.discard(event.spawn_id);
+    if (tracked) {
+      await runLimited(tracked, DM_CONCURRENCY, async ({ channelId, messageId }) => {
+        await this.presence.close(messageId);
+        const channel = await this.client!.channels.fetch(channelId).catch(() => null);
+        if (!channel?.isSendable()) return;
+        await ignoreUnknownMessage(channel.messages.delete(messageId), 'delete');
+        deleted++;
+      });
+    } else {
+      const botId = this.client.user.id;
+      for (const channel of await this.alertChannels(event.server_name)) {
+        const messages = await channel.messages.fetch({ limit: SWEEP_MESSAGE_LIMIT }).catch(() => null);
+        for (const message of messages?.values() ?? []) {
+          if (message.author.id === botId && parsePostedAlert(message)?.spawnId === event.spawn_id) {
+            await this.presence.close(message.id);
+            await ignoreUnknownMessage(message.delete(), 'delete');
+            deleted++;
+          }
+        }
+      }
+    }
+    console.info(`[notify] Spawn ${event.spawn_id} deleted by an admin: ${deleted} alert(s) deleted`);
+  }
+
   /** Channel alerts only: DMs (they carry a note) have no presence lists to tell. */
   private async trackedAlerts(spawnId: string): Promise<Message[]> {
     const alerts: Message[] = [];
@@ -243,7 +285,7 @@ export class Notifier {
   private async alertsInHistory(event: WardenKilled): Promise<Message[]> {
     const botId = this.client!.user!.id;
     const alerts: Message[] = [];
-    for (const channel of this.alertChannels(event.server_name)) {
+    for (const channel of await this.alertChannels(event.server_name)) {
       const messages = await channel.messages.fetch({ limit: SWEEP_MESSAGE_LIMIT }).catch(() => null);
       for (const message of messages?.values() ?? []) {
         // Disabled buttons: already expired or already marked dead.
@@ -304,7 +346,7 @@ export class Notifier {
     let retired = 0;
     let scheduled = 0;
 
-    for (const channel of this.alertChannels()) {
+    for (const channel of await this.alertChannels()) {
       let messages;
       try {
         messages = await channel.messages.fetch({ limit: SWEEP_MESSAGE_LIMIT });
@@ -397,13 +439,11 @@ export class Notifier {
   }
 
   /** Alert channels for one world, or every channel that can hold alerts. */
-  private alertChannels(serverName?: string): TextChannel[] {
-    const matches = (name: string) =>
-      serverName === undefined ? name.startsWith(this.options.channelPrefix) : name === this.channelName(serverName);
-
-    return this.client!.guilds.cache.flatMap((guild) =>
-      guild.channels.cache.filter((c): c is TextChannel => c.type === ChannelType.GuildText && matches(c.name)),
+  private async alertChannels(serverName?: string): Promise<TextChannel[]> {
+    const text = this.client!.guilds.cache.flatMap((guild) =>
+      guild.channels.cache.filter((c): c is TextChannel => c.type === ChannelType.GuildText),
     ).toJSON();
+    return this.channels.select(text, serverName);
   }
 }
 

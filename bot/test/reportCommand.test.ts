@@ -1,10 +1,15 @@
 import { MessageFlags } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
+import { AlertChannels } from '../src/alertChannels.js';
+import { AlertPresence } from '../src/alertPresence.js';
 import { ApiError, type ApiClient } from '../src/api.js';
 import { InteractionHandler } from '../src/interactions.js';
 import { MonsterCatalog } from '../src/monsterCatalog.js';
 
-function setup(characters: { id: string; name: string; server_name: string }[] | Error = [{ id: 'c1', name: 'Sir Tester', server_name: 'Monza' }]) {
+function setup(
+  characters: { id: string; name: string; server_name: string }[] | Error = [{ id: 'c1', name: 'Sir Tester', server_name: 'Monza' }],
+  assignments: { guild_id: string; server_name: string; channel_id: string }[] = [],
+) {
   const api = {
     getMonsters: vi.fn().mockResolvedValue([
       { id: 142, name: 'Dragon Warden', category: 'Dragons' },
@@ -23,15 +28,24 @@ function setup(characters: { id: string; name: string; server_name: string }[] |
       expires_at: '2026-10-29T12:07:00Z',
     }),
   };
-  const handler = new InteractionHandler(api as unknown as ApiClient, new MonsterCatalog(api as unknown as ApiClient), 'http://panel', 'wardens-');
+  const channels = new AlertChannels(async () => assignments, 'wardens-');
+  const handler = new InteractionHandler(
+    api as unknown as ApiClient,
+    new MonsterCatalog(api as unknown as ApiClient),
+    'http://panel',
+    'wardens-',
+    new AlertPresence(),
+    channels,
+  );
   return { api, handler };
 }
 
-function command(options: Record<string, string | number | undefined>, channelName = 'ogolny') {
+function command(options: Record<string, string | number | undefined>, channelName = 'ogolny', channelId = 'chan-1') {
   return {
-    commandName: 'report',
+    commandName: 'warden',
     user: { id: '999000' },
-    channel: { name: channelName },
+    guildId: 'guild-1',
+    channel: { id: channelId, name: channelName },
     deferred: false,
     replied: false,
     options: {
@@ -55,7 +69,7 @@ function command(options: Record<string, string | number | undefined>, channelNa
 
 const required = { monster: '142', city: 'venore', location: 'Dragon Lair -2' };
 
-describe('/report', () => {
+describe('/warden', () => {
   it('reports the Warden as the linked player with the default TTL', async () => {
     const { api, handler } = setup();
     const interaction = command(required);
@@ -70,8 +84,10 @@ describe('/report', () => {
       location_description: 'Dragon Lair -2',
       additional_info: null,
       ttl_minutes: 8,
+      discord_guild_id: 'guild-1',
     });
     expect(interaction.editReply.mock.calls[0]![0]).toContain('Reported **Dragon Warden** on **Monza**');
+    expect(interaction.editReply.mock.calls[0]![0]).toContain('will appear in #wardens-monza');
   });
 
   it('accepts a typed-in monster name, TTL and additional info', async () => {
@@ -92,6 +108,27 @@ describe('/report', () => {
 
     expect(api.reportSpawn).toHaveBeenCalledWith('999000', expect.objectContaining({ server_name: 'Secura' }));
     expect(api.getCharacters).not.toHaveBeenCalled();
+  });
+
+  it('takes the world from a channel chosen on the website and names that channel', async () => {
+    const { api, handler } = setup([{ id: 'c1', name: 'A', server_name: 'Monza' }], [
+      { guild_id: 'guild-1', server_name: 'Secura', channel_id: 'chan-7' },
+    ]);
+    api.reportSpawn.mockResolvedValue({
+      id: 's1',
+      monster: { id: 142, name: 'Dragon Warden' },
+      server_name: 'Secura',
+      city: 'Venore',
+      location_description: 'Dragon Lair -2',
+      expires_at: '2026-10-29T12:07:00Z',
+    });
+    const interaction = command(required, 'alerts', 'chan-7');
+
+    await handler.handle(interaction as never);
+
+    expect(api.reportSpawn).toHaveBeenCalledWith('999000', expect.objectContaining({ server_name: 'Secura', discord_guild_id: 'guild-1' }));
+    expect(api.getCharacters).not.toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('will appear in <#chan-7>'));
   });
 
   it('outside a #wardens-<world> channel, picks the world with most of the player\'s characters', async () => {
@@ -165,10 +202,10 @@ describe('/report', () => {
   });
 });
 
-describe('/report autocomplete', () => {
+describe('/warden autocomplete', () => {
   function autocomplete(name: string, value: string) {
     return {
-      commandName: 'report',
+      commandName: 'warden',
       user: { id: '999000' },
       options: { getFocused: () => ({ name, value }) },
       isAutocomplete: () => true,

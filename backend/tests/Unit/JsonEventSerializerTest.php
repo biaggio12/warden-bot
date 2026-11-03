@@ -2,6 +2,7 @@
 
 namespace App\Tests\Unit;
 
+use App\Message\WardenDeletedEvent;
 use App\Message\WardenExpiredEvent;
 use App\Message\WardenKilledEvent;
 use App\Message\WardenSpawnedEvent;
@@ -67,6 +68,17 @@ final class JsonEventSerializerTest extends TestCase
         $encoded = $serializer->encode(new Envelope($event));
 
         self::assertSame('warden.killed', json_decode($encoded['body'], true)['event']);
+        self::assertEquals($event, $serializer->decode($encoded)->getMessage());
+    }
+
+    public function testDeletedEventRoundTrip(): void
+    {
+        $serializer = new JsonEventSerializer();
+        $event = new WardenDeletedEvent('c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b', 'Monza');
+
+        $encoded = $serializer->encode(new Envelope($event));
+
+        self::assertSame(['event' => 'warden.deleted', 'spawn_id' => $event->spawnId, 'server_name' => 'Monza'], ['event' => json_decode($encoded['body'], true)['event']] + json_decode($encoded['body'], true)['data']);
         self::assertEquals($event, $serializer->decode($encoded)->getMessage());
     }
 }

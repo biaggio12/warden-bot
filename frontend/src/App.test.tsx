@@ -90,3 +90,32 @@ describe('App on first login', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
+
+describe('App tabs by role', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.setItem('warden-tracker.session', JSON.stringify({ token: 't', label: 'player@example.com' }));
+    window.location.hash = '';
+    window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    mocked.characters.mockResolvedValue([{ id: 'c1', name: 'Sir Tester', server_name: 'Monza' }]);
+    mocked.worlds.mockResolvedValue(['Monza']);
+    mocked.cities.mockResolvedValue([]);
+    mocked.monsters.mockResolvedValue([]);
+    mocked.activeSpawns.mockResolvedValue([]);
+    mocked.discordGuilds.mockResolvedValue([]);
+    mocked.discordConfig.mockResolvedValue({ enabled: false, authorize_url: null });
+  });
+
+  it.each([
+    ['a moderator', { is_moderator: true }, true],
+    ['an admin', { is_admin: true }, true],
+    ['a player', {}, false],
+  ])('shows the Players tab to %s: %s', async (_, role, visible) => {
+    mocked.me.mockResolvedValue({ ...emailUser, ...role });
+    renderApp();
+
+    await screen.findByText('Your account is not linked to Discord');
+    expect(screen.getByRole('link', { name: 'Bestiary' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Players' }) !== null).toBe(visible);
+  });
+});

@@ -6,9 +6,11 @@ use App\Entity\User;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Admins are the accounts linked to the Discord ids listed in ADMIN_DISCORD_IDS
+ * Staff of the Players tab. Admins are the accounts linked to the Discord ids listed in ADMIN_DISCORD_IDS
  * (comma separated). Admin rights follow the Discord account, so they need no
- * migration and are granted or taken away by editing .env.
+ * migration and are granted or taken away by editing .env. Moderators are granted by an
+ * admin on the website (users.moderator) and get the Players tab without the admin-only
+ * actions; an admin is never a moderator too.
  */
 final readonly class AdminPolicy
 {
@@ -26,6 +28,17 @@ final readonly class AdminPolicy
     public function isAdmin(User $user): bool
     {
         return $this->isDiscordIdAdmin($user->getDiscordUserId());
+    }
+
+    public function isModerator(User $user): bool
+    {
+        return $user->isModerator() && !$this->isAdmin($user);
+    }
+
+    /** Admin or moderator: may open the Players tab. */
+    public function isStaff(User $user): bool
+    {
+        return $this->isAdmin($user) || $user->isModerator();
     }
 
     public function isDiscordIdAdmin(?string $discordUserId): bool

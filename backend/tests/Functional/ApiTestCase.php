@@ -72,6 +72,8 @@ abstract class ApiTestCase extends WebTestCase
      * Replaces the Discord API (bot calls) with these servers. Disables kernel reboots so
      * the fake stays in place for every request of the test.
      *
+     * Channels given by name get an id made of the server id and their position, see channelIdOf().
+     *
      * @param list<array{id: string, name: string, channels: list<string>, members: list<string>}> $guilds
      */
     protected function fakeDiscordGuilds(array $guilds): void
@@ -87,7 +89,11 @@ abstract class ApiTestCase extends WebTestCase
             }
             if (1 === preg_match('#^guilds/(\d+)/channels$#', $path, $m)) {
                 return isset($byId[$m[1]])
-                    ? new JsonMockResponse(array_map(static fn (string $name): array => ['name' => $name, 'type' => 0], $byId[$m[1]]['channels']))
+                    ? new JsonMockResponse(array_map(
+                        static fn (string $name, int $i): array => ['id' => self::channelIdOf($m[1], $i), 'name' => $name, 'type' => 0, 'position' => $i],
+                        $byId[$m[1]]['channels'],
+                        array_keys($byId[$m[1]]['channels']),
+                    ))
                     : $notFound();
             }
             if (1 === preg_match('#^guilds/(\d+)/members/(\d+)$#', $path, $m)) {
@@ -96,6 +102,12 @@ abstract class ApiTestCase extends WebTestCase
 
             return $notFound();
         }, 'https://discord.com/api/v10/'));
+    }
+
+    /** The id fakeDiscordGuilds() gives the channel at `$position` of a server. */
+    protected static function channelIdOf(string $guildId, int $position): string
+    {
+        return substr($guildId, 0, 15).substr($guildId, -2).$position;
     }
 
     /**

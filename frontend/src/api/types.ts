@@ -38,6 +38,8 @@ export interface Me {
   discord_username: string | null;
   /** Admins (ADMIN_DISCORD_IDS on the server) also get the Players tab. */
   is_admin?: boolean;
+  /** Granted by an admin: the Players tab without the admin-only actions. */
+  is_moderator?: boolean;
 }
 
 /** One registered account in the admin's Players list. */
@@ -48,6 +50,8 @@ export interface Player {
   discord_linked: boolean;
   /** Admin accounts (and your own) cannot be blocked, unlinked or deleted. */
   is_admin: boolean;
+  /** Moderators see the Players tab; only admins change their accounts. */
+  is_moderator: boolean;
   /** Cannot log in, report or be pinged. */
   blocked: boolean;
   created_at: string;
@@ -57,12 +61,48 @@ export interface Player {
   bestiary_marks: number;
 }
 
+/** How one player has reported Wardens (admins only). Reports past their time count as expired. */
+export interface PlayerReports {
+  total: number;
+  last_7_days: number;
+  last_30_days: number;
+  first_report_at: string | null;
+  last_report_at: string | null;
+  by_status: { active: number; killed: number; expired: number };
+  worlds: { server_name: string; reports: number }[];
+  /** The 10 most reported. */
+  monsters: { name: string; image_url: string | null; reports: number }[];
+  /** The 20 newest. */
+  recent: {
+    id: string;
+    monster: string;
+    image_url: string | null;
+    server_name: string;
+    location: string;
+    city: string | null;
+    status: 'ACTIVE' | 'KILLED' | 'EXPIRED';
+    created_at: string;
+  }[];
+}
+
 /** One entry of the admin history in the Players tab. */
 export interface AdminActionEntry {
   id: number;
   admin: string;
   player: string;
-  action: 'block' | 'unblock' | 'unlink_discord' | 'delete' | 'add_character' | 'delete_character' | 'reset_password';
+  action:
+    | 'block'
+    | 'unblock'
+    | 'unlink_discord'
+    | 'delete'
+    | 'add_character'
+    | 'delete_character'
+    | 'reset_password'
+    | 'delete_report'
+    | 'grant_moderator'
+    | 'revoke_moderator'
+    | 'set_alert_channel'
+    | 'reset_alert_channel';
   details: string | null;
   created_at: string;
 }
@@ -107,4 +147,27 @@ export interface DiscordConfig {
 export interface DiscordGuild {
   id: string;
   name: string;
+}
+
+/** A text channel of a Discord server the bot is in. */
+export interface DiscordChannel {
+  id: string;
+  name: string;
+  category: string | null;
+}
+
+export interface AlertChannelAssignment {
+  guild_id: string;
+  server_name: string;
+  channel_id: string;
+}
+
+/** The admin's alert channel settings: the bot's servers, the worlds and the choices made. */
+export interface AlertChannelSettings {
+  /** False while the backend has no bot token (it cannot list the servers). */
+  enabled: boolean;
+  prefix: string;
+  worlds: string[];
+  servers: { id: string; name: string; channels: DiscordChannel[] }[];
+  assignments: AlertChannelAssignment[];
 }

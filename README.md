@@ -122,15 +122,23 @@ ustawia timery. Do tego potrzebuje uprawnienia *Read Message History*.
 Prywatne wiadomości są domyślnie **wyłączone**, a alerty trafiają tylko na kanał. Włączysz je przez
 `DISCORD_DM_ENABLED=true` w `.env` i `docker compose up -d bot`.
 
-Zgłoszenie z Discorda: `/report monster city location [time] [info]` (wymaga połączonego konta).
+Zgłoszenie z Discorda: `/warden monster city location [time] [info]` (wymaga połączonego konta).
 Potwór i miasto mają podpowiedzi. Świat jest ustalany automatycznie: z nazwy kanału (`#wardens-monza`
 oznacza Monzę), a poza takim kanałem ze świata, na którym gracz ma najwięcej postaci (przy remisie
 pierwszy alfabetycznie, jak w formularzu web). Zgłoszenie działa jak to z aplikacji: alert z pingami
 pojawia się na kanale.
 
-Gdy bot jest na kilku serwerach Discord, zgłoszenie z `/report` trafia tylko na serwer, na którym użyto
+Gdy bot jest na kilku serwerach Discord, zgłoszenie z `/warden` trafia tylko na serwer, na którym użyto
 komendy. Zgłoszenie z aplikacji trafia na serwery, na których jest zgłaszający. Jeśli zgłaszający nie ma
 podpiętego Discorda, alert idzie na wszystkie serwery z kanałem `#wardens-<świat>`.
+
+Kanał alertów można też wybrać na stronie: admin w zakładce Players → „Discord alert channels” widzi
+serwery bota z ich kanałami tekstowymi (pobranymi przez API Discorda tokenem bota) i dla każdego świata
+wybiera kanał z listy. Wybór jest zapisany po ID kanału (tabela `alert_channels`), więc kanał może mieć
+dowolną nazwę i zmiana nazwy niczego nie psuje. Na serwerze, na którym świat ma wybrany kanał, alerty
+idą tylko tam; bez wyboru działa jak dotąd kanał `#wardens-<świat>`. Bot czyta wybory z
+`GET /api/v1/internal/alert-channels` i odświeża je co minutę; `/warden` na wybranym kanale bierze z niego świat.
+Kanały wczytane z Discorda backend trzyma 5 minut, nowy kanał widać od razu po kliknięciu „Reload channels”.
 
 Alert pokazuje też, kto zgłosił Wardena (pole „Reported by”): wzmiankę Discord i postacie zgłaszającego na
 tym świecie, bo zwykle to on daje znać w grze, kiedy atakować. Aplikacja pokazuje to samo przy aktywnym
@@ -225,7 +233,7 @@ Zakładka *Stats* pokazuje dla wybranego okresu (7 dni, 30 dni, cały czas):
 - *Your stats*: Twoje zgłoszenia, miejsce w rankingu i postęp bestiariusza każdej postaci.
 
 Formularz zgłoszenia w aplikacji nie ma wyboru świata. Zgłoszenie trafia na świat, na którym gracz ma najwięcej
-postaci (przy remisie pierwszy alfabetycznie). Na inny świat można zgłosić z Discorda: `/report` na kanale tego świata, np. `#wardens-secura`.
+postaci (przy remisie pierwszy alfabetycznie). Na inny świat można zgłosić z Discorda: `/warden` na kanale tego świata, np. `#wardens-secura`.
 
 ## Logi i błędy (Sentry)
 

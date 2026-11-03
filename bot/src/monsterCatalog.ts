@@ -38,8 +38,8 @@ export function rankMatches<T>(items: T[], query: string, label: (item: T) => st
 }
 
 /**
- * Cached dictionaries from the API: monsters (named in replies, searched by /report),
- * worlds and cities (for /report autocomplete).
+ * Cached dictionaries from the API: monsters (named in replies, searched by /warden),
+ * worlds and cities (for /warden autocomplete).
  */
 export class MonsterCatalog {
   private readonly monsters: CachedList<Monster>;

@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AdminActionEntry, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, Stats, StatsPeriod, WardenSpawn } from './types';
+import type { AdminActionEntry, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
 
 export const endpoints = {
   login: (email: string, password: string) => api<AuthResponse>('POST', '/auth/login', { email, password }),
@@ -8,7 +8,7 @@ export const endpoints = {
   discordConfig: () => api<DiscordConfig>('GET', '/auth/discord'),
   /** Logged out: logs in (token returned). Logged in: links Discord to the account (no token). */
   discordAuth: (code: string) => api<AuthResponse | { user: Me }>('POST', '/auth/discord', { code }),
-  /** Admins only (403 for everyone else). */
+  /** Admins and moderators only (403 for everyone else). */
   players: () => api<{ users: Player[] }>('GET', '/admin/users').then((r) => r.users),
   /** Admin actions on another player's account; each answers with the updated row. */
   admin: {
@@ -21,7 +21,19 @@ export const endpoints = {
     deleteCharacter: (id: number, characterId: string) => api<Player>('DELETE', `/admin/users/${id}/characters/${characterId}`),
     /** A new temporary password, returned once. */
     resetPassword: (id: number) => api<{ password: string; user: Player }>('POST', `/admin/users/${id}/reset-password`),
+    reports: (id: number) => api<PlayerReports>('GET', `/admin/users/${id}/reports`),
+    grantModerator: (id: number) => api<Player>('POST', `/admin/users/${id}/moderator`),
+    revokeModerator: (id: number) => api<Player>('DELETE', `/admin/users/${id}/moderator`),
+    /** Answers with the reporter's updated row (null when their account is gone). */
+    deleteReport: (spawnId: string) => api<{ user: Player | null }>('DELETE', `/admin/reports/${spawnId}`),
     actions: () => api<{ actions: AdminActionEntry[] }>('GET', '/admin/actions').then((r) => r.actions),
+    /** Admins only. `refresh` reads the channels from Discord again. */
+    alertChannels: (refresh = false) => api<AlertChannelSettings>('GET', `/admin/alert-channels${refresh ? '?refresh=1' : ''}`),
+    setAlertChannel: (guildId: string, serverName: string, channelId: string) =>
+      api<AlertChannelSettings>('PUT', '/admin/alert-channels', { guild_id: guildId, server_name: serverName, channel_id: channelId }),
+    /** Back to the channel named <prefix><world>. */
+    resetAlertChannel: (guildId: string, serverName: string) =>
+      api<AlertChannelSettings>('DELETE', `/admin/alert-channels/${guildId}/${encodeURIComponent(serverName)}`),
   },
   changePassword: (currentPassword: string, newPassword: string) =>
     api<void>('PUT', '/me/password', { current_password: currentPassword, new_password: newPassword }),

@@ -55,8 +55,9 @@ export default function App() {
   const [hashTab, setTab] = useState<TabId>(tabFromHash);
   const me = useAsync(() => (session ? endpoints.me() : Promise.resolve(null)), [session?.token]);
   const isAdmin = me.data?.is_admin === true;
-  const tabs = isAdmin ? [...TABS, ADMIN_TAB] : TABS;
-  const tab = hashTab === ADMIN_TAB.id && !isAdmin ? 'report' : hashTab;
+  const isStaff = isAdmin || me.data?.is_moderator === true;
+  const tabs = isStaff ? [...TABS, ADMIN_TAB] : TABS;
+  const tab = hashTab === ADMIN_TAB.id && !isStaff ? 'report' : hashTab;
   // First login: an account without characters gets the welcome dialog (once per browser session).
   const characters = useAsync(() => (session ? endpoints.characters() : Promise.resolve(null)), [session?.token]);
   const welcomeKey = `${WELCOME_KEY}:${session?.label ?? ''}`;
@@ -141,7 +142,7 @@ export default function App() {
         {tab === 'bestiary' && <BestiaryPage />}
         {tab === 'stats' && <StatsPage />}
         {tab === 'characters' && <CharactersPage />}
-        {tab === 'players' && <PlayersPage />}
+        {tab === 'players' && <PlayersPage isAdmin={isAdmin} />}
       </main>
     </div>
   );

@@ -94,7 +94,7 @@ export default function WelcomeDialog({ discordLinked, onCheckDiscord, onClose }
               <>
                 <p className="text-muted">
                   You logged in with e-mail, so the bot does not know your Discord account yet: no pings, and you cannot report Wardens (here or
-                  with /report). Link it one of two ways:
+                  with /warden). Link it one of two ways:
                 </p>
                 <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
                   <li>
