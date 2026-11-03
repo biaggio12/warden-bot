@@ -37,3 +37,23 @@ describe('loadConfig DISCORD_DM_ENABLED', () => {
     expect(loadConfig().directMessages).toBe(true);
   });
 });
+
+describe('loadConfig daily summary', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('defaults to 10:00 Warsaw time, can be moved or turned off', () => {
+    withEnv({});
+    expect(loadConfig()).toMatchObject({ summaryTime: [10, 0], summaryTimeZone: 'Europe/Warsaw' });
+    withEnv({ DISCORD_SUMMARY_TIME: '9:30', DISCORD_SUMMARY_TIMEZONE: 'UTC' });
+    expect(loadConfig()).toMatchObject({ summaryTime: [9, 30], summaryTimeZone: 'UTC' });
+    withEnv({ DISCORD_SUMMARY_TIME: 'off' });
+    expect(loadConfig().summaryTime).toBeNull();
+  });
+
+  it('rejects a bad time or zone', () => {
+    withEnv({ DISCORD_SUMMARY_TIME: '25:00' });
+    expect(() => loadConfig()).toThrow(/DISCORD_SUMMARY_TIME/);
+    withEnv({ DISCORD_SUMMARY_TIME: '10:00', DISCORD_SUMMARY_TIMEZONE: 'Mars/Base' });
+    expect(() => loadConfig()).toThrow(/DISCORD_SUMMARY_TIMEZONE/);
+  });
+});

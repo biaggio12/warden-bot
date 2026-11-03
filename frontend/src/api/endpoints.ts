@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AdminActionEntry, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
+import type { AdminActionEntry, HistoryPage, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
 
 export const endpoints = {
   login: (email: string, password: string) => api<AuthResponse>('POST', '/auth/login', { email, password }),
@@ -58,6 +58,14 @@ export const endpoints = {
       (r) => r.warden_spawns,
     ),
   /** The Warden was killed before its time ran out: closes the report and takes the Discord alert down. */
+  history: (filter: { serverName?: string; monsterId?: number; before?: string }) => {
+    const query = new URLSearchParams();
+    if (filter.serverName) query.set('server_name', filter.serverName);
+    if (filter.monsterId) query.set('monster_id', String(filter.monsterId));
+    if (filter.before) query.set('before', filter.before);
+    const qs = query.toString();
+    return api<HistoryPage>('GET', `/warden-spawns/history${qs ? `?${qs}` : ''}`);
+  },
   killSpawn: (id: string) => api<WardenSpawn>('POST', `/warden-spawns/${id}/kill`),
   /** Empty when the player has no linked Discord or the server cannot list them. */
   discordGuilds: (serverName: string) =>

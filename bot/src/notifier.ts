@@ -1,6 +1,7 @@
 import { ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Client, type Message, type TextChannel } from 'discord.js';
 import { AlertChannels } from './alertChannels.js';
 import { AlertPresence } from './alertPresence.js';
+import { buildSummaryMessage, type DailySummaryData } from './dailySummary.js';
 import type { ApiClient } from './api.js';
 import type { WardenDeleted, WardenExpired, WardenKilled, WardenSpawned } from './events.js';
 import {
@@ -372,6 +373,29 @@ export class Notifier {
     }
 
     console.info(`[sweep] ${this.options.deleteExpired ? 'Deleted' : 'Disabled'} ${retired} expired alert(s), scheduled ${scheduled} active one(s)`);
+  }
+
+  /** The daily summary, in each world's alert channels; worlds without reports get none. */
+  async postDailySummary(summary: DailySummaryData): Promise<void> {
+    const since = new Date(summary.since);
+    const until = new Date(summary.until);
+    if (!this.client?.user) {
+      console.info(`[dry-run] Daily summary: ${summary.worlds.map((w) => `${w.server_name} ${w.reports} report(s)`).join(', ') || 'no reports'}`);
+      return;
+    }
+    const historyUrl = this.options.frontendUrl ? `${this.options.frontendUrl.replace(/\/+$/, '')}/#history` : undefined;
+    let posted = 0;
+    for (const world of summary.worlds) {
+      for (const channel of await this.alertChannels(world.server_name)) {
+        try {
+          await channel.send(buildSummaryMessage(world, since, until, historyUrl));
+          posted++;
+        } catch (error) {
+          console.warn(`[summary] Could not post in #${channel.name} (${channel.guild.name}):`, (error as Error).message);
+        }
+      }
+    }
+    console.info(`[summary] Daily summary of ${summary.worlds.length} world(s) posted in ${posted} channel(s)`);
   }
 
   dispose(): void {

@@ -514,3 +514,37 @@ describe('Notifier with the bot on several servers', () => {
     expect(b.send).toHaveBeenCalledOnce();
   });
 });
+
+describe('Notifier daily summary', () => {
+  const summary = {
+    since: '2026-11-03T09:00:00Z',
+    until: '2026-11-04T09:00:00Z',
+    worlds: [
+      { server_name: 'Monza', reports: 2, killed: 1, expired: 1, active: 0, responded: 1, monsters: [{ name: 'Dragon', reports: 2 }], reporters: [{ name: 'Sir Tester', reports: 2 }] },
+      { server_name: 'Antica', reports: 1, killed: 0, expired: 1, active: 0, responded: 0, monsters: [], reporters: [] },
+    ],
+  };
+
+  it("posts each world's summary in that world's alert channel, with a link to the history", async () => {
+    const { notifier, channel } = setup({ frontendUrl: 'https://warden.example/' });
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    await notifier.postDailySummary(summary);
+
+    // Only #wardens-monza exists: Antica has no channel here.
+    expect(channel.send).toHaveBeenCalledOnce();
+    const payload = channel.send.mock.calls[0]![0] as any;
+    expect(payload.embeds[0].toJSON().title).toBe('📊 Monza: the last 24 hours');
+    expect(payload.components[0].toJSON().components[0].url).toBe('https://warden.example/#history');
+  });
+
+  it('keeps going when a channel refuses the post', async () => {
+    const { notifier, channel } = setup();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    channel.send.mockRejectedValueOnce(new Error('Missing Access'));
+
+    await expect(notifier.postDailySummary(summary)).resolves.toBeUndefined();
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Could not post'), 'Missing Access');
+  });
+});

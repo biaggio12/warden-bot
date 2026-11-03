@@ -35,6 +35,13 @@ którym ten potwór jest jeszcze potrzebny. Potwora da się odhaczyć jednym kli
   zgłoszenia (`ACTIVE → EXPIRED`) i publikuje `WardenExpiredEvent`. Bot **usuwa** wtedy alert
   (z `DISCORD_DELETE_EXPIRED=false` zostawia go z wyłączonym przyciskiem). Bot ma też własny timer
   na `expires_at`, więc alert znika nawet przy opóźnieniu workera.
+- **Podsumowanie dnia:** codziennie o `DISCORD_SUMMARY_TIME` (domyślnie 10:00, strefa
+  `DISCORD_SUMMARY_TIMEZONE`, domyślnie `Europe/Warsaw`) bot wysyła na kanał alertów każdego świata
+  podsumowanie ostatnich 24 godzin: liczbę zgłoszeń, zabitych i wygasłych, ilu graczy poszło, Wardeny
+  i najczęściej zgłaszających (`GET /internal/daily-summary`). Świat bez zgłoszeń nie dostaje
+  wiadomości. `DISCORD_SUMMARY_TIME=off` wyłącza podsumowanie.
+- **Historia:** zakładka *History* pokazuje wszystkie zgłoszenia od najnowszych, z filtrem świata
+  i potwora (`GET /warden-spawns/history`, stronicowane po 30).
 
 Interfejs użytkownika (aplikacja webowa, wiadomości i komendy bota, komunikaty błędów API) jest po angielsku.
 

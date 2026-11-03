@@ -45,6 +45,37 @@ class CharacterRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
+    /**
+     * For each of the user's characters, which of $monsterIds it has killed, so the
+     * active list can say which character still needs a Warden.
+     *
+     * @param list<int> $monsterIds
+     *
+     * @return list<array{name: string, server_name: string, killed: list<int>}>
+     */
+    public function killsOf(User $user, array $monsterIds): array
+    {
+        $rows = $this->getEntityManager()->getConnection()->executeQuery(
+            'SELECT c.id, c.name, c.server_name, k.monster_id
+             FROM characters c
+             LEFT JOIN character_killed_monsters k ON k.character_id = c.id AND k.monster_id IN (:monsters)
+             WHERE c.user_id = :user
+             ORDER BY c.name',
+            ['user' => $user->getId(), 'monsters' => $monsterIds ?: [0]],
+            ['monsters' => \Doctrine\DBAL\ArrayParameterType::INTEGER],
+        )->fetchAllAssociative();
+
+        $characters = [];
+        foreach ($rows as $row) {
+            $characters[$row['id']] ??= ['name' => (string) $row['name'], 'server_name' => (string) $row['server_name'], 'killed' => []];
+            if (null !== $row['monster_id']) {
+                $characters[$row['id']]['killed'][] = (int) $row['monster_id'];
+            }
+        }
+
+        return array_values($characters);
+    }
+
     public function nameExists(string $name): bool
     {
         return null !== $this->createQueryBuilder('c')

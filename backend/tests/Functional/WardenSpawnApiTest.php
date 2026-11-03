@@ -435,6 +435,25 @@ final class WardenSpawnApiTest extends ApiTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    public function testTellsAPlayerWhichOfTheirCharactersStillNeedsTheWarden(): void
+    {
+        $reporter = $this->createUser();
+        $player = $this->createUser('other@example.com');
+        $spawn = $this->createSpawn($reporter);
+        $hunted = $this->createCharacter($player, 'Hunter One');
+        $this->createCharacter($player, 'Hunter Two');
+        $this->createCharacter($player, 'Elsewhere', 'Antica');
+        [$token, $reporterToken] = [$this->tokenFor($player), $this->tokenFor($reporter)];
+        $this->requestJson('POST', \sprintf('/api/v1/characters/%s/killed-monsters', $hunted->getId()), ['monster_id' => $spawn->getMonster()->getId()], $token);
+        self::assertResponseStatusCodeSame(201);
+
+        $list = $this->requestJson('GET', '/api/v1/warden-spawns?server_name=Monza', null, $token);
+
+        self::assertSame(['missing' => ['Hunter Two'], 'done' => ['Hunter One']], $list['warden_spawns'][0]['your_characters']);
+        $none = $this->requestJson('GET', '/api/v1/warden-spawns?server_name=Monza', null, $reporterToken);
+        self::assertSame(['missing' => [], 'done' => []], $none['warden_spawns'][0]['your_characters']);
+    }
+
     private function createSpawn(User $reporter): WardenSpawn
     {
         $spawn = new WardenSpawn($this->createMonster(), 'Monza', 'Venore Dragon Lair', $reporter);

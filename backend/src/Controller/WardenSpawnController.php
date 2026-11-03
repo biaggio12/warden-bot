@@ -9,11 +9,13 @@ use App\Http\Json;
 use App\Http\Problem;
 use App\Message\WardenKilledEvent;
 use App\Message\WardenSpawnedEvent;
+use App\Repository\CharacterRepository;
 use App\Repository\MonsterRepository;
 use App\Repository\WardenSpawnRepository;
 use App\Service\CityRegistry;
 use App\Service\DiscordGuildDirectory;
 use App\Service\ReporterInfo;
+use App\Service\SpawnHistory;
 use App\Service\WorldRegistry;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
@@ -26,6 +28,7 @@ use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
+use Symfony\Component\Uid\Uuid;
 
 #[Route('/api/v1/warden-spawns')]
 final class WardenSpawnController extends AbstractController
@@ -42,14 +45,60 @@ final class WardenSpawnController extends AbstractController
     }
 
     #[Route('', name: 'api_warden_spawns_list', methods: ['GET'])]
-    public function list(#[CurrentUser] User $user, #[MapQueryParameter('server_name')] ?string $serverName = null): JsonResponse
-    {
+    public function list(
+        #[CurrentUser] User $user,
+        CharacterRepository $characters,
+        #[MapQueryParameter('server_name')] ?string $serverName = null,
+    ): JsonResponse {
+        $active = $this->spawns->findActive($serverName, $this->clock->now());
+        $mine = $characters->killsOf($user, array_values(array_unique(array_map(
+            static fn (WardenSpawn $spawn): int => (int) $spawn->getMonster()->getId(),
+            $active,
+        ))));
+
         return $this->json([
             'warden_spawns' => array_map(
-                fn (WardenSpawn $spawn): array => Json::wardenSpawn($spawn, $this->reporters->of($spawn), $user),
-                $this->spawns->findActive($serverName, $this->clock->now()),
+                fn (WardenSpawn $spawn): array => Json::wardenSpawn($spawn, $this->reporters->of($spawn), $user)
+                    + self::yourCharacters($spawn, $mine),
+                $active,
             ),
         ]);
+    }
+
+    /**
+     * The viewer's characters on the spawn's world, split by whether they still need the
+     * monster: a player with several characters sees which one should go.
+     *
+     * @param list<array{name: string, server_name: string, killed: list<int>}> $mine
+     *
+     * @return array{your_characters: array{missing: list<string>, done: list<string>}}
+     */
+    private static function yourCharacters(WardenSpawn $spawn, array $mine): array
+    {
+        $monsterId = (int) $spawn->getMonster()->getId();
+        $result = ['missing' => [], 'done' => []];
+        foreach ($mine as $character) {
+            if (0 === strcasecmp($character['server_name'], $spawn->getServerName())) {
+                $result[\in_array($monsterId, $character['killed'], true) ? 'done' : 'missing'][] = $character['name'];
+            }
+        }
+
+        return ['your_characters' => $result];
+    }
+
+    /** Past reports for the History tab, newest first; `before` pages on. */
+    #[Route('/history', name: 'api_warden_spawns_history', methods: ['GET'])]
+    public function history(
+        SpawnHistory $history,
+        #[MapQueryParameter('server_name')] ?string $serverName = null,
+        #[MapQueryParameter('monster_id')] ?int $monsterId = null,
+        #[MapQueryParameter] ?string $before = null,
+    ): JsonResponse {
+        if (null !== $before && !Uuid::isValid($before)) {
+            return Problem::response(400, 'before must be the id of a report.');
+        }
+
+        return $this->json($history->page('' === $serverName ? null : $serverName, $monsterId, $before));
     }
 
     #[Route('', name: 'api_warden_spawns_create', methods: ['POST'])]

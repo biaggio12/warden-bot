@@ -27,6 +27,8 @@ export interface WardenSpawn {
   status: 'ACTIVE' | 'KILLED' | 'EXPIRED';
   created_at: string;
   expires_at: string;
+  /** In the active list: the viewer's characters on that world, still needing the monster or not. */
+  your_characters?: { missing: string[]; done: string[] };
 }
 
 export interface Me {
@@ -170,4 +172,25 @@ export interface AlertChannelSettings {
   worlds: string[];
   servers: { id: string; name: string; channels: DiscordChannel[] }[];
   assignments: AlertChannelAssignment[];
+}
+
+/** One past report in the History tab. */
+export interface HistoryEntry {
+  id: string;
+  monster: { id: number; name: string; image_url?: string | null };
+  server_name: string;
+  city: string | null;
+  location_description: string;
+  reported_by: { characters: string[]; discord_name: string | null };
+  status: 'ACTIVE' | 'KILLED' | 'EXPIRED';
+  /** Players who clicked [On my way] or [On site] on its alerts. */
+  responded: number;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface HistoryPage {
+  warden_spawns: HistoryEntry[];
+  /** Pass as `before` for the next page; null on the last one. */
+  next_before: string | null;
 }

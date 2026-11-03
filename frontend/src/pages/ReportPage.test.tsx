@@ -209,6 +209,24 @@ describe('ReportPage', () => {
     expect(screen.queryByRole('button', { name: 'Gone? Remove report' })).not.toBeInTheDocument();
   });
 
+  it('says which of your characters still need the Warden', async () => {
+    const now = Date.now();
+    const base = {
+      monster: { id: 7, name: 'Hydra' }, server_name: 'Monza', city: null, location_description: 'Hydra cave',
+      additional_info: null, status: 'ACTIVE' as const, reported_by: { characters: ['Someone'], discord_name: null }, is_yours: false,
+      created_at: new Date(now - 60_000).toISOString(), expires_at: new Date(now + 5 * 60_000).toISOString(),
+    };
+    mocked.activeSpawns.mockResolvedValue([
+      { ...base, id: 's1', your_characters: { missing: ['Knight Two'], done: ['Knight One'] } },
+      { ...base, id: 's2', your_characters: { missing: [], done: ['Knight One', 'Knight Two'] } },
+    ]);
+    renderPage();
+
+    expect(await screen.findByText('Knight Two')).toHaveClass('text-xp');
+    expect(screen.getByText(/has it: Knight One/)).toBeInTheDocument();
+    expect(screen.getByText('All your characters have it already.')).toBeInTheDocument();
+  });
+
   it('closes a report early after a second click', async () => {
     const user = userEvent.setup();
     const now = Date.now();

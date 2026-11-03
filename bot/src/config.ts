@@ -1,3 +1,5 @@
+import { parseTime } from './dailySummary.js';
+
 export interface Config {
   /** Empty token = dry-run mode: events are consumed and logged, nothing is sent to Discord. */
   discordToken: string | null;
@@ -19,6 +21,10 @@ export interface Config {
   pingCleanupMs: number;
   /** Roles pinged with every alert, on the servers that have them (others skip them). */
   pingRoleIds: string[];
+  /** When the daily summary of the last 24 hours is posted ("HH:MM"); null = off. */
+  summaryTime: [number, number] | null;
+  /** Time zone of summaryTime, e.g. Europe/Warsaw. */
+  summaryTimeZone: string;
 }
 
 function optional(name: string): string | null {
@@ -55,6 +61,25 @@ function discordToken(): string | null {
   );
 }
 
+/** DISCORD_SUMMARY_TIME: "HH:MM" (default 10:00, server save), or off. */
+function summaryTime(): [number, number] | null {
+  const value = optional('DISCORD_SUMMARY_TIME') ?? '10:00';
+  if (['off', 'false', 'no', '0'].includes(value.toLowerCase())) return null;
+  const parsed = parseTime(value);
+  if (!parsed) throw new Error(`DISCORD_SUMMARY_TIME must look like 10:00 or be "off", got "${value}"`);
+  return parsed;
+}
+
+function summaryTimeZone(): string {
+  const zone = optional('DISCORD_SUMMARY_TIMEZONE') ?? 'Europe/Warsaw';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+  } catch {
+    throw new Error(`DISCORD_SUMMARY_TIMEZONE is not a time zone: "${zone}"`);
+  }
+  return zone;
+}
+
 export function loadConfig(): Config {
   return {
     discordToken: discordToken(),
@@ -73,5 +98,7 @@ export function loadConfig(): Config {
       .split(',')
       .map((id) => id.trim())
       .filter((id) => /^\d{17,20}$/.test(id)),
+    summaryTime: summaryTime(),
+    summaryTimeZone: summaryTimeZone(),
   };
 }

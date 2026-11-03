@@ -10,6 +10,7 @@ import { useAsync } from './lib/useAsync';
 import BestiaryPage from './pages/BestiaryPage';
 import CharactersPage from './pages/CharactersPage';
 import DiscordCallbackPage from './pages/DiscordCallbackPage';
+import HistoryPage from './pages/HistoryPage';
 import LoginPage from './pages/LoginPage';
 import PlayersPage from './pages/PlayersPage';
 import ReportPage from './pages/ReportPage';
@@ -18,6 +19,7 @@ import StatsPage from './pages/StatsPage';
 const TABS = [
   { id: 'report', label: 'Report a Warden', short: 'Report' },
   { id: 'bestiary', label: 'Bestiary', short: 'Bestiary' },
+  { id: 'history', label: 'History', short: 'History' },
   { id: 'stats', label: 'Stats', short: 'Stats' },
   { id: 'characters', label: 'Characters', short: 'Characters' },
 ] as const;
@@ -140,6 +142,7 @@ export default function App() {
       <main key={pageKey} className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
         {tab === 'report' && <ReportPage />}
         {tab === 'bestiary' && <BestiaryPage />}
+        {tab === 'history' && <HistoryPage />}
         {tab === 'stats' && <StatsPage />}
         {tab === 'characters' && <CharactersPage />}
         {tab === 'players' && <PlayersPage isAdmin={isAdmin} />}

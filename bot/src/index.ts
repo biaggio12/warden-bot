@@ -6,6 +6,7 @@ import { AlertPresence } from './alertPresence.js';
 import { ApiClient } from './api.js';
 import { loadConfig, type Config } from './config.js';
 import { EventConsumer } from './consumer.js';
+import { DailySummary } from './dailySummary.js';
 import { startHealthServer } from './health.js';
 import { InteractionHandler, commands } from './interactions.js';
 import { MonsterCatalog } from './monsterCatalog.js';
@@ -103,9 +104,20 @@ async function main(): Promise<void> {
   );
   watchdog.start();
 
+  const summary = config.summaryTime
+    ? new DailySummary(config.summaryTime, config.summaryTimeZone, async (until) => notifier.postDailySummary(await api.getDailySummary(until)))
+    : null;
+  summary?.start();
+  console.info(
+    config.summaryTime
+      ? `[summary] Daily at ${config.summaryTime.map((n) => String(n).padStart(2, '0')).join(':')} ${config.summaryTimeZone}`
+      : '[summary] Disabled (DISCORD_SUMMARY_TIME=off)',
+  );
+
   const shutdown = async (signal: string): Promise<void> => {
     console.info(`[bot] ${signal} received, shutting down`);
     watchdog.stop();
+    summary?.stop();
     notifier.dispose();
     health.close();
     await consumer.stop();

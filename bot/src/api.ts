@@ -4,6 +4,7 @@
  * permissions (e.g. the character ownership voter).
  */
 import type { ChannelAssignment } from './alertChannels.js';
+import type { DailySummaryData } from './dailySummary.js';
 import type { Presence } from './messages.js';
 
 export interface CharacterRef {
@@ -85,6 +86,11 @@ export class ApiClient {
   /** The channels admins chose on the website per server and world. */
   async getAlertChannels(): Promise<ChannelAssignment[]> {
     return (await this.request<{ alert_channels: ChannelAssignment[] }>('GET', '/internal/alert-channels')).alert_channels;
+  }
+
+  /** What happened on each world in the 24 hours before `until`. */
+  async getDailySummary(until: Date): Promise<DailySummaryData> {
+    return this.request('GET', `/internal/daily-summary?${new URLSearchParams({ until: until.toISOString() })}`);
   }
 
   async getMonsters(): Promise<Monster[]> {

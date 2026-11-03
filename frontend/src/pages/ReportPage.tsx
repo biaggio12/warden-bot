@@ -301,6 +301,21 @@ function Field({ label, error, hint, children }: { label: string; error: string 
   );
 }
 
+/** Which of the viewer's characters on that world still need this Warden. */
+function YourCharacters({ spawn }: { spawn: WardenSpawn }) {
+  const mine = spawn.your_characters;
+  if (!mine || mine.missing.length + mine.done.length === 0) return null;
+  if (mine.missing.length === 0) {
+    return <p className="mt-1 text-sm text-muted">All your characters have it already.</p>;
+  }
+  return (
+    <p className="mt-1 text-sm text-muted">
+      Missing on <span className="font-semibold text-xp">{mine.missing.join(', ')}</span>
+      {mine.done.length > 0 && <> · has it: {mine.done.join(', ')}</>}
+    </p>
+  );
+}
+
 type ActiveSpawnsProps = {
   server: string;
   spawns: Awaited<ReturnType<typeof endpoints.activeSpawns>>;
@@ -366,6 +381,7 @@ function ActiveSpawns({ server, spawns, onClosed }: ActiveSpawnsProps) {
                     <p className="mt-1 text-sm text-muted">
                       Reported by <span className="font-semibold text-ink">{reporterName(spawn)}</span>
                     </p>
+                    <YourCharacters spawn={spawn} />
                   </div>
                 </div>
                 <SegmentBar value={left} kind="hp" className="mt-3" />

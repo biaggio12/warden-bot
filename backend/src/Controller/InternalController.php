@@ -12,10 +12,12 @@ use App\Repository\CharacterRepository;
 use App\Repository\UserRepository;
 use App\Repository\WardenSpawnPresenceRepository;
 use App\Repository\WardenSpawnRepository;
+use App\Service\SpawnHistory;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -30,6 +32,23 @@ final class InternalController extends AbstractController
     public function alertChannels(AlertChannelRepository $assignments): JsonResponse
     {
         return $this->json(['alert_channels' => array_map(static fn (AlertChannel $a): array => $a->toArray(), $assignments->all())]);
+    }
+
+    /** The last 24 hours per world, for the bot's daily post; `until` defaults to now. */
+    #[Route('/daily-summary', name: 'api_internal_daily_summary', methods: ['GET'])]
+    public function dailySummary(SpawnHistory $history, ClockInterface $clock, #[MapQueryParameter] ?string $until = null): JsonResponse
+    {
+        try {
+            $end = null === $until ? $clock->now() : new \DateTimeImmutable($until);
+        } catch (\Exception) {
+            return Problem::response(400, 'until must be a date and time.');
+        }
+
+        return $this->json([
+            'since' => $end->modify('-24 hours')->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM),
+            'until' => $end->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM),
+            'worlds' => $history->dailySummary($end),
+        ]);
     }
 
     /**
