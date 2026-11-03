@@ -34,7 +34,7 @@ describe('buildSummaryMessage', () => {
 
     expect(embed.title).toBe('📊 Monza: the last 24 hours');
     expect(Object.fromEntries(embed.fields.map((f: any) => [f.name, f.value]))).toEqual({
-      Reports: '4', Killed: '2', Expired: '1', 'Players who went': '3', 'Still up': '1',
+      Reports: '4',
       Wardens: 'Dragon — 3\nHydra — 1',
       'Top reporters': '1. My\\_Knight — 2\n2. Rival — 2',
     });

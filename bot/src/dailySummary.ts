@@ -61,13 +61,7 @@ export function buildSummaryMessage(world: WorldSummary, since: Date, until: Dat
     .setColor(0x2563eb)
     .setTitle(`📊 ${world.server_name}: the last 24 hours`)
     .setDescription(`${time(since, TimestampStyles.ShortDateTime)} – ${time(until, TimestampStyles.ShortDateTime)}`)
-    .addFields(
-      { name: 'Reports', value: String(world.reports), inline: true },
-      { name: 'Killed', value: String(world.killed), inline: true },
-      { name: 'Expired', value: String(world.expired), inline: true },
-      { name: 'Players who went', value: String(world.responded), inline: true },
-    );
-  if (world.active > 0) embed.addFields({ name: 'Still up', value: String(world.active), inline: true });
+    .addFields({ name: 'Reports', value: String(world.reports) });
   if (world.monsters.length > 0) embed.addFields({ name: 'Wardens', value: list(world.monsters, false) });
   if (world.reporters.length > 0) embed.addFields({ name: 'Top reporters', value: list(world.reporters, true) });
 
