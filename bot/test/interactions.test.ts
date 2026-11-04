@@ -2,7 +2,7 @@ import { MessageFlags, type APIEmbed } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError, type ApiClient, type CharacterRef } from '../src/api.js';
 import { InteractionHandler } from '../src/interactions.js';
-import { buildSpawnMessage, goneButtonId, killButtonId, killSelectId, presenceButtonId, presenceOf, withPresence, type PresenceList } from '../src/messages.js';
+import { buildSpawnMessage, checkButtonId, goneButtonId, killButtonId, killSelectId, presenceButtonId, presenceOf, withPresence, type PresenceList } from '../src/messages.js';
 import type { MonsterCatalog } from '../src/monsterCatalog.js';
 import { spawnFixture } from './fixtures.js';
 
@@ -299,5 +299,44 @@ describe('[Gone] button', () => {
     await handler.handle(interaction as never);
 
     expect(interaction.editReply).toHaveBeenCalledWith({ content: '⚠️ This report is no longer active.', components: [] });
+  });
+});
+
+describe('[My characters] button', () => {
+  function check(characters: CharacterRef[], kills: Record<string, number[]>) {
+    const ctx = setup(characters);
+    (ctx.api as any).getKilledMonsterIds = vi.fn(async (_user: string, id: string) => kills[id] ?? []);
+    ctx.interaction.customId = checkButtonId(142, 'Monza');
+    return ctx;
+  }
+
+  it('tells the player privately which characters still need the Warden', async () => {
+    const { api, handler, interaction } = check(
+      [{ id: 'char-1', name: 'Sir Tester' }, { id: 'char-2', name: 'Lady Tester' }],
+      { 'char-1': [142, 7], 'char-2': [7] },
+    );
+
+    await handler.handle(interaction as never);
+
+    expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    expect(api.getCharacters).toHaveBeenCalledWith('999000', 'Monza');
+    expect(interaction.editReply).toHaveBeenCalledWith('🔍 **Dragon Warden** on Monza:\n❌ Missing on **Lady Tester**\n✅ Has it: **Sir Tester**');
+    expect(api.markKilled).not.toHaveBeenCalled();
+  });
+
+  it('says when every character has it already', async () => {
+    const { handler, interaction } = check([{ id: 'char-1', name: 'Sir Tester' }], { 'char-1': [142] });
+
+    await handler.handle(interaction as never);
+
+    expect(interaction.editReply).toHaveBeenCalledWith('✅ All your characters on Monza have **Dragon Warden** already: **Sir Tester**.');
+  });
+
+  it('points players without a character on that world to the website', async () => {
+    const { handler, interaction } = check([], {});
+
+    await handler.handle(interaction as never);
+
+    expect(interaction.editReply.mock.calls[0]![0]).toContain('You have no character on **Monza**');
   });
 });

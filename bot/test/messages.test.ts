@@ -210,6 +210,13 @@ describe('bestiary link', () => {
     expect(row.components.at(-1)).toMatchObject({ style: ButtonStyle.Link, url: 'https://warden.example/#bestiary', label: 'My bestiary' });
   });
 
+  it('puts [My characters] in a second row, on channel alerts only', () => {
+    const rows = buildSpawnMessage(spawnFixture(), { onMyWay: true, bestiaryUrl: url }).components!.map((r) => (r as { toJSON(): any }).toJSON());
+    expect(rows).toHaveLength(2);
+    expect(rows[1].components).toMatchObject([{ label: 'My characters', custom_id: 'chk|142|Monza' }]);
+    expect(buildSpawnMessage(spawnFixture(), { note: 'dm' }).components).toHaveLength(1);
+  });
+
   it('keeps the link usable when the alert expires', () => {
     const alert = postedAlert(spawnFixture(), { onMyWay: true, bestiaryUrl: url });
     const rows = disabledButtonRows(alert as never).map((row) => row.toJSON());

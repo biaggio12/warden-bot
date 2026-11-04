@@ -14,11 +14,13 @@ import { AlertPresence } from './alertPresence.js';
 import { ApiError, type ApiClient } from './api.js';
 import {
   buildCharacterSelect,
+  characterCheck,
   goneConfirmation,
   isInPresence,
   killConfirmation,
   leavePresence,
   monsterNameOfAlert,
+  parseCheckCustomId,
   parseGoneCustomId,
   parseKillCustomId,
   presenceListOf,
@@ -74,6 +76,8 @@ export class InteractionHandler {
         await this.handleLink(interaction);
       } else if (interaction.isChatInputCommand() && interaction.commandName === 'warden') {
         await this.report.execute(interaction);
+      } else if (interaction.isButton() && parseCheckCustomId(interaction.customId)) {
+        await this.handleCheck(interaction, parseCheckCustomId(interaction.customId)!);
       } else if (interaction.isButton() && parseGoneCustomId(interaction.customId)) {
         await this.handleGone(interaction, parseGoneCustomId(interaction.customId)!);
       } else if (interaction.isButton() && presenceListOf(interaction.customId)) {
@@ -168,6 +172,23 @@ export class InteractionHandler {
       (presence) => leavePresence(presence, userId),
       (next) => alert.edit({ embeds: [next] }),
     );
+  }
+
+  /** [My characters]: which of the player's characters on that world still need the monster, only to them. */
+  private async handleCheck(interaction: ButtonInteraction, target: { monsterId: number; serverName: string }): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const characters = await this.api.getCharacters(interaction.user.id, target.serverName);
+    if (characters.length === 0) {
+      await interaction.editReply(`You have no character on **${escapeMarkdown(target.serverName)}**. Add one in the web app: ${this.frontendUrl}`);
+      return;
+    }
+    const kills = await Promise.all(characters.map((c) => this.api.getKilledMonsterIds(interaction.user.id, c.id)));
+    const has = (i: number) => kills[i]!.includes(target.monsterId);
+    const missing = characters.filter((_, i) => !has(i)).map((c) => c.name);
+    const done = characters.filter((_, i) => has(i)).map((c) => c.name);
+
+    await interaction.editReply(characterCheck(await this.catalog.nameOf(target.monsterId), target.serverName, missing, done));
   }
 
   /** Scenario A: one character on that world -> mark immediately. Scenario B: ask which one. */

@@ -123,6 +123,12 @@ export class ApiClient {
   }
 
   /** @returns true when the kill was recorded now, false when it already existed */
+  /** The monsters one of the player's characters has in its bestiary. */
+  async getKilledMonsterIds(discordUserId: string, characterId: string): Promise<number[]> {
+    const body = await this.request<{ monster_ids: number[] }>('GET', `/characters/${encodeURIComponent(characterId)}/killed-monsters`, undefined, discordUserId);
+    return body.monster_ids;
+  }
+
   async markKilled(discordUserId: string, characterId: string, monsterId: number): Promise<boolean> {
     const { status } = await this.requestWithStatus(
       'POST',

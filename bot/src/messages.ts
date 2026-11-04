@@ -20,6 +20,8 @@ const KILL_SELECT_PREFIX = 'wks';
 /** [Gone] asks for confirmation; the confirm button then closes the report for everyone. */
 const GONE_BUTTON_PREFIX = 'gone';
 const GONE_CONFIRM_PREFIX = 'gone!';
+/** [My characters]: tells the player privately which of their characters still need the monster. */
+const CHECK_BUTTON_PREFIX = 'chk';
 /**
  * Who is heading to a Warden and who is already there. Each list lives in an embed field
  * of the alert itself; a player is on at most one of them.
@@ -62,6 +64,31 @@ export function presenceButtonId(list: PresenceList, spawnId: string): string {
 
 export function goneButtonId(spawnId: string, confirm = false): string {
   return [confirm ? GONE_CONFIRM_PREFIX : GONE_BUTTON_PREFIX, spawnId].join(SEPARATOR);
+}
+
+export function checkButtonId(monsterId: number, serverName: string): string {
+  return [CHECK_BUTTON_PREFIX, monsterId, serverName].join(SEPARATOR);
+}
+
+/** The monster and world of a [My characters] button, or null for other buttons. */
+export function parseCheckCustomId(customId: string): { monsterId: number; serverName: string } | null {
+  const [prefix, monsterId, serverName] = customId.split(SEPARATOR);
+  if (prefix !== CHECK_BUTTON_PREFIX || !serverName || !/^\d+$/.test(monsterId ?? '')) {
+    return null;
+  }
+  return { monsterId: Number(monsterId), serverName };
+}
+
+/** The private answer to [My characters], like the "Missing on" line of the website. */
+export function characterCheck(monsterName: string, serverName: string, missing: string[], done: string[]): string {
+  const names = (list: string[]) => list.map((name) => `**${escapeMarkdown(name)}**`).join(', ');
+  const monster = `**${escapeMarkdown(monsterName)}**`;
+  if (missing.length === 0) {
+    return `✅ All your characters on ${escapeMarkdown(serverName)} have ${monster} already: ${names(done)}.`;
+  }
+  const lines = [`🔍 ${monster} on ${escapeMarkdown(serverName)}:`, `❌ Missing on ${names(missing)}`];
+  if (done.length > 0) lines.push(`✅ Has it: ${names(done)}`);
+  return lines.join('\n');
 }
 
 /** The spawn a [Gone] button (or its confirmation) belongs to, or null for other buttons. */
@@ -184,7 +211,21 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
     row.addComponents(new ButtonBuilder().setURL(options.bestiaryUrl).setLabel('My bestiary').setEmoji('📖').setStyle(ButtonStyle.Link));
   }
 
-  return { embeds: [embed], components: [row] };
+  const rows = [row];
+  if (options.onMyWay) {
+    rows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(checkButtonId(spawn.monster.id, spawn.server_name))
+          .setLabel('My characters')
+          .setEmoji('🔍')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(expired),
+      ),
+    );
+  }
+
+  return { embeds: [embed], components: rows };
 }
 
 /** The web app page where players mark the monsters their characters have. */
