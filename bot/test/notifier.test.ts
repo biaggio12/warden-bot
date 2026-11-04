@@ -131,7 +131,7 @@ describe('Notifier', () => {
     expect(alert!.payload.content).toBe('**Dragon Warden** <@42> <@43>');
     expect(alert!.payload.allowedMentions).toEqual({ parse: [], users: ['42', '43'], roles: [] });
     expect(alert!.payload.embeds).toHaveLength(1);
-    expect(alert!.payload.components[0].toJSON().components.map((c: { label: string }) => c.label)).toEqual(['Killed', 'OMW', 'On site', 'Gone']);
+    expect(alert!.payload.components[0].toJSON().components.map((c: { label: string }) => c.label)).toEqual(['Hit / Completed ✅', 'OMW', 'On site', 'Dead']);
     expect(ctx.user.send).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(999);

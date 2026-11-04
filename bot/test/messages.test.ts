@@ -48,7 +48,7 @@ describe('buildSpawnMessage', () => {
     expect(fields).toContain('Venore — Lair \\\\*-2\\\\*'); // city + markdown-escaped location
     expect(fields).not.toContain('Additional info');
     expect(fields).toContain(`<t:${unixSeconds('2026-10-29T12:07:00Z')}:R>`);
-    expect(button).toMatchObject({ type: ComponentType.Button, label: 'Killed', style: ButtonStyle.Success, disabled: false });
+    expect(button).toMatchObject({ type: ComponentType.Button, label: 'Hit / Completed ✅', style: ButtonStyle.Success, disabled: false });
     expect(parseKillCustomId(button.custom_id)).toEqual({
       kind: 'button',
       spawnId: 'c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b',
@@ -141,7 +141,7 @@ describe('reading back a posted alert', () => {
   it('disables every button of a posted alert', () => {
     const rows = disabledButtonRows(postedAlert(spawnFixture()) as never).map((row) => row.toJSON());
 
-    expect(rows[0]!.components[0]).toMatchObject({ label: 'Killed', disabled: true });
+    expect(rows[0]!.components[0]).toMatchObject({ label: 'Hit / Completed ✅', disabled: true });
   });
 });
 
@@ -152,7 +152,7 @@ describe('presence buttons and lists', () => {
     const withButtons = (buildSpawnMessage(spawnFixture(), { onMyWay: true }).components![0] as { toJSON(): any }).toJSON();
     const without = (buildSpawnMessage(spawnFixture()).components![0] as { toJSON(): any }).toJSON();
 
-    expect(withButtons.components.map((c: { label: string }) => c.label)).toEqual(['Killed', 'OMW', 'On site', 'Gone']);
+    expect(withButtons.components.map((c: { label: string }) => c.label)).toEqual(['Hit / Completed ✅', 'OMW', 'On site', 'Dead']);
     expect(without.components).toHaveLength(1);
   });
 

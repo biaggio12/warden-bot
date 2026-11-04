@@ -32,13 +32,13 @@ export function tibiopediaImageUrl(monsterName: string): string {
 
 const KILL_BUTTON_PREFIX = 'wk';
 const KILL_SELECT_PREFIX = 'wks';
-/** [Gone] asks for confirmation; the confirm button then closes the report for everyone. */
+/** [Dead] asks for confirmation; the confirm button then closes the report for everyone. */
 const GONE_BUTTON_PREFIX = 'gone';
 const GONE_CONFIRM_PREFIX = 'gone!';
-/** Footer of channel alerts: players clicked [On site] and forgot [Killed]. */
+/** Footer of channel alerts: players clicked [On site] and forgot [Hit / Completed]. */
 export const ALERT_HELP = [
   '🏃 OMW: you are on your way · 📍 On site: you are at the Warden',
-  '⚔️ Killed: you attacked it, marks it in your bestiary. Click it even after On site!',
+  '⚔️ Hit / Completed ✅: you attacked it, marks it in your bestiary. Click it even after On site!',
 ].join('\n');
 /** [My characters]: tells the player privately which of their characters still need the monster. */
 const CHECK_BUTTON_PREFIX = 'chk';
@@ -197,7 +197,7 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
 
   const button = new ButtonBuilder()
     .setCustomId(killButtonId({ spawnId: spawn.spawn_id, monsterId: spawn.monster.id, serverName: spawn.server_name }))
-    .setLabel('Killed')
+    .setLabel('Hit / Completed ✅')
     .setEmoji('⚔️')
     .setStyle(ButtonStyle.Success)
     .setDisabled(expired);
@@ -219,8 +219,8 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
         .setDisabled(expired),
       new ButtonBuilder()
         .setCustomId(goneButtonId(spawn.spawn_id))
-        .setLabel('Gone')
-        .setEmoji('💀')
+        .setLabel('Dead')
+        .setEmoji('☠️')
         .setStyle(ButtonStyle.Danger)
         .setDisabled(expired),
     );
