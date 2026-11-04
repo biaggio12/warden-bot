@@ -20,6 +20,11 @@ const KILL_SELECT_PREFIX = 'wks';
 /** [Gone] asks for confirmation; the confirm button then closes the report for everyone. */
 const GONE_BUTTON_PREFIX = 'gone';
 const GONE_CONFIRM_PREFIX = 'gone!';
+/** Footer of channel alerts: players clicked [On site] and forgot [Killed]. */
+export const ALERT_HELP = [
+  '🏃 OMW: you are on your way · 📍 On site: you are at the Warden',
+  '⚔️ Killed: you attacked it, marks it in your bestiary. Click it even after On site!',
+].join('\n');
 /** [My characters]: tells the player privately which of their characters still need the monster. */
 const CHECK_BUTTON_PREFIX = 'chk';
 /**
@@ -173,6 +178,8 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
   }
   if (expired) {
     embed.setFooter({ text: 'This report has expired' });
+  } else if (options.onMyWay) {
+    embed.setFooter({ text: ALERT_HELP });
   }
 
   const button = new ButtonBuilder()

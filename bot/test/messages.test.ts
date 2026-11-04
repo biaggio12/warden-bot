@@ -210,6 +210,13 @@ describe('bestiary link', () => {
     expect(row.components.at(-1)).toMatchObject({ style: ButtonStyle.Link, url: 'https://warden.example/#bestiary', label: 'My bestiary' });
   });
 
+  it('explains the buttons in the footer of a live channel alert', () => {
+    const footer = (message: ReturnType<typeof buildSpawnMessage>) => (message.embeds![0] as { toJSON(): any }).toJSON().footer?.text;
+    expect(footer(buildSpawnMessage(spawnFixture(), { onMyWay: true }))).toContain('Click it even after On site!');
+    expect(footer(buildSpawnMessage(spawnFixture(), { note: 'dm' }))).toBeUndefined();
+    expect(footer(buildSpawnMessage(spawnFixture(), { onMyWay: true, expired: true }))).toBe('This report has expired');
+  });
+
   it('puts [My characters] in a second row, on channel alerts only', () => {
     const rows = buildSpawnMessage(spawnFixture(), { onMyWay: true, bestiaryUrl: url }).components!.map((r) => (r as { toJSON(): any }).toJSON());
     expect(rows).toHaveLength(2);
