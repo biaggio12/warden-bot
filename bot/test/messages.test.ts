@@ -2,6 +2,7 @@ import { ButtonStyle, ComponentType } from 'discord.js';
 import { describe, expect, it } from 'vitest';
 import {
   allButtonsDisabled,
+  tibiopediaImageUrl,
   bestiaryUrlOf,
   buildSpawnMessage,
   disabledButtonRows,
@@ -56,9 +57,21 @@ describe('buildSpawnMessage', () => {
     });
   });
 
-  it('shows the creature GIF as thumbnail when the event has one', () => {
-    expect(render().embed.thumbnail).toEqual({ url: 'https://static.wikia.nocookie.net/tibia/images/e/e0/Dragon.gif' });
-    expect(render({}, { monster: { id: 1, name: 'Old', category: 'Dragons' } }).embed.thumbnail).toBeUndefined();
+  it('shows the creature GIF from Tibiopedia as thumbnail', () => {
+    expect(render({}, { monster: { id: 1, name: 'Nibblemaw', category: 'Vermins' } }).embed.thumbnail)
+      .toEqual({ url: 'https://tibiopedia.pl/images/static/monsters/nibblemaw.gif' });
+  });
+
+  it.each([
+    ['Dragon Lord', 'dragon_lord'],
+    ['Soul-Broken Harbinger', 'soul-broken_harbinger'],
+    ["Mooh'Tah Warrior", 'moohtah_warrior'],
+    ["Druid's Apparition", 'druids_apparition'],
+    ['Fish (Creature)', 'fish'],
+    ['Nomad (Basic)', 'nomad'],
+    ['Horse (Brown)', 'horse_brown'],
+  ])('maps %s to its Tibiopedia file name', (name, slug) => {
+    expect(tibiopediaImageUrl(name)).toBe(`https://tibiopedia.pl/images/static/monsters/${slug}.gif`);
   });
 
   it('shows additional info when present', () => {

@@ -15,6 +15,21 @@ import {
 import type { CharacterRef } from './api.js';
 import type { WardenSpawned } from './events.js';
 
+/**
+ * Creature GIF on Tibiopedia. Discord's proxy shows Fandom's GIFs as still WebP frames, Tibiopedia's animate.
+ * Its file names are the lowercase name with `_` for spaces, no apostrophes, and the wiki's
+ * "(Creature)"/"(Basic)" disambiguators dropped: "Mooh'Tah Warrior" → moohtah_warrior, "Horse (Brown)" → horse_brown.
+ */
+export function tibiopediaImageUrl(monsterName: string): string {
+  const slug = monsterName
+    .toLowerCase()
+    .replace(/\s*\((creature|basic)\)/g, '')
+    .replace(/['()]/g, '')
+    .trim()
+    .replace(/\s+/g, '_');
+  return `https://tibiopedia.pl/images/static/monsters/${encodeURIComponent(slug)}.gif`;
+}
+
 const KILL_BUTTON_PREFIX = 'wk';
 const KILL_SELECT_PREFIX = 'wks';
 /** [Gone] asks for confirmation; the confirm button then closes the report for everyone. */
@@ -167,9 +182,7 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
     )
     .setTimestamp(new Date(spawn.created_at));
 
-  if (spawn.monster.image_url?.startsWith('https://')) {
-    embed.setThumbnail(spawn.monster.image_url);
-  }
+  embed.setThumbnail(tibiopediaImageUrl(spawn.monster.name));
   if (spawn.additional_info) {
     embed.addFields({ name: 'Additional info', value: escapeMarkdown(spawn.additional_info).slice(0, 1024) });
   }
