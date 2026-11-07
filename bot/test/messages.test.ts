@@ -1,11 +1,11 @@
 import { ButtonStyle, ComponentType } from 'discord.js';
 import { describe, expect, it } from 'vitest';
 import {
-  allButtonsDisabled,
   tibiopediaImageUrl,
   bestiaryUrlOf,
   buildSpawnMessage,
-  disabledButtonRows,
+  finishedButtonRows,
+  isFinishedAlert,
   killButtonId,
   killSelectId,
   mentionChunks,
@@ -24,8 +24,8 @@ import { postedAlert, spawnFixture } from './fixtures.js';
 function render(options: Parameters<typeof buildSpawnMessage>[1] = {}, overrides: Parameters<typeof spawnFixture>[0] = {}) {
   const message = buildSpawnMessage(spawnFixture({ location_description: 'Lair *-2*', ...overrides }), options);
   const embed = (message.embeds![0] as { toJSON(): any }).toJSON();
-  const row = (message.components![0] as { toJSON(): any }).toJSON();
-  return { embed, button: row.components[0] };
+  const row = (message.components![0] as { toJSON(): any } | undefined)?.toJSON();
+  return { embed, button: row?.components[0], components: message.components! };
 }
 
 describe('buildSpawnMessage', () => {
@@ -48,7 +48,8 @@ describe('buildSpawnMessage', () => {
     expect(fields).toContain('Venore — Lair \\\\*-2\\\\*'); // city + markdown-escaped location
     expect(fields).not.toContain('Additional info');
     expect(fields).toContain(`<t:${unixSeconds('2026-10-29T12:07:00Z')}:R>`);
-    expect(button).toMatchObject({ type: ComponentType.Button, label: 'Hit / Completed ✅', style: ButtonStyle.Success, disabled: false });
+    expect(button).toMatchObject({ type: ComponentType.Button, label: 'Hit / Completed ✅', style: ButtonStyle.Success });
+    expect(button.disabled).toBeFalsy();
     expect(parseKillCustomId(button.custom_id)).toEqual({
       kind: 'button',
       spawnId: 'c7a6e1d2-9f3b-4b1a-8e2a-1c2d3e4f5a6b',
@@ -81,10 +82,10 @@ describe('buildSpawnMessage', () => {
     expect(embed.fields).toContainEqual({ name: 'Additional info', value: 'Dwie osoby\nczekają' });
   });
 
-  it('disables the button once expired', () => {
-    const { embed, button } = render({ expired: true });
+  it('removes every button once expired', () => {
+    const { embed, components } = render({ expired: true, onMyWay: true });
 
-    expect(button.disabled).toBe(true);
+    expect(components).toEqual([]);
     expect(embed.footer.text).toBe('This report has expired');
   });
 });
@@ -131,17 +132,23 @@ describe('reading back a posted alert', () => {
     const message = postedAlert(spawnFixture(), { expired: true });
 
     expect(parsePostedAlert(message as never)?.expiresAt).toEqual(new Date('2026-10-29T12:07:00Z'));
-    expect(allButtonsDisabled(message as never)).toBe(true);
+    expect(parsePostedAlert(message as never)?.spawnId).toBeNull();
+    expect(isFinishedAlert(message as never)).toBe(true);
+    expect(isFinishedAlert(postedAlert(spawnFixture()) as never)).toBe(false);
   });
 
   it('ignores messages that are not alerts', () => {
     expect(parsePostedAlert({ embeds: [], components: [] } as never)).toBeNull();
   });
 
-  it('disables every button of a posted alert', () => {
-    const rows = disabledButtonRows(postedAlert(spawnFixture()) as never).map((row) => row.toJSON());
+  it('keeps only [My bestiary] once the report is over', () => {
+    const labels = (rows: { toJSON(): any }[]) => rows.map((row) => row.toJSON().components.map((c: { label: string }) => c.label));
+    const finished = finishedButtonRows(postedAlert(spawnFixture(), { onMyWay: true, bestiaryUrl: 'https://warden.example/#bestiary' }) as never);
+    const expired = buildSpawnMessage(spawnFixture(), { onMyWay: true, expired: true, bestiaryUrl: 'https://warden.example/#bestiary' }).components as { toJSON(): any }[];
 
-    expect(rows[0]!.components[0]).toMatchObject({ label: 'Hit / Completed ✅', disabled: true });
+    expect(labels(finished)).toEqual([['My bestiary']]);
+    expect(labels(expired)).toEqual([['My bestiary']]);
+    expect(finishedButtonRows(postedAlert(spawnFixture(), { onMyWay: true }) as never)).toEqual([]);
   });
 });
 
@@ -239,11 +246,10 @@ describe('bestiary link', () => {
 
   it('keeps the link usable when the alert expires', () => {
     const alert = postedAlert(spawnFixture(), { onMyWay: true, bestiaryUrl: url });
-    const rows = disabledButtonRows(alert as never).map((row) => row.toJSON());
-    const buttons = rows[0]!.components as { style: number; disabled?: boolean }[];
+    const rows = finishedButtonRows(alert as never).map((row) => row.toJSON());
 
-    expect(buttons.filter((b) => b.style !== ButtonStyle.Link).every((b) => b.disabled)).toBe(true);
-    expect(buttons.find((b) => b.style === ButtonStyle.Link)?.disabled).toBe(false);
-    expect(allButtonsDisabled({ ...alert, components: rows.map((r) => ({ type: r.type, components: r.components.map((c: any) => ({ ...c, customId: c.custom_id, toJSON: () => c })) })) } as never)).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.components).toMatchObject([{ style: ButtonStyle.Link, url }]);
+    expect(isFinishedAlert({ ...alert, components: rows.map((r) => ({ type: r.type, components: r.components.map((c: any) => ({ ...c, toJSON: () => c })) })) } as never)).toBe(true);
   });
 });

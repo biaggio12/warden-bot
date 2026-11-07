@@ -196,40 +196,30 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
     embed.setFooter({ text: ALERT_HELP });
   }
 
-  const button = new ButtonBuilder()
-    .setCustomId(killButtonId({ spawnId: spawn.spawn_id, monsterId: spawn.monster.id, serverName: spawn.server_name }))
-    .setLabel('Hit / Completed ✅')
-    .setEmoji('⚔️')
-    .setStyle(ButtonStyle.Success)
-    .setDisabled(expired);
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
-
-  if (options.onMyWay) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(presenceButtonId('onMyWay', spawn.spawn_id))
-        .setLabel('OMW')
-        .setEmoji('🏃')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(expired),
-      new ButtonBuilder()
-        .setCustomId(presenceButtonId('onSite', spawn.spawn_id))
-        .setLabel('No Need')
-        .setEmoji('🚫')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(expired),
-      new ButtonBuilder()
-        .setCustomId(goneButtonId(spawn.spawn_id))
-        .setLabel('Dead')
-        .setEmoji('☠️')
-        .setStyle(ButtonStyle.Danger)
-        .setDisabled(expired),
-    );
+  // Once the report is over only the bestiary link stays: updating it is never too late.
+  const link = options.bestiaryUrl
+    ? new ButtonBuilder().setURL(options.bestiaryUrl).setLabel('My bestiary').setEmoji('📖').setStyle(ButtonStyle.Link)
+    : null;
+  if (expired) {
+    return { embeds: [embed], components: link ? [new ActionRowBuilder<ButtonBuilder>().addComponents(link)] : [] };
   }
 
-  if (options.bestiaryUrl) {
-    // A link stays usable after the report is over: updating the bestiary is never too late.
-    row.addComponents(new ButtonBuilder().setURL(options.bestiaryUrl).setLabel('My bestiary').setEmoji('📖').setStyle(ButtonStyle.Link));
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(killButtonId({ spawnId: spawn.spawn_id, monsterId: spawn.monster.id, serverName: spawn.server_name }))
+      .setLabel('Hit / Completed ✅')
+      .setEmoji('⚔️')
+      .setStyle(ButtonStyle.Success),
+  );
+  if (options.onMyWay) {
+    row.addComponents(
+      new ButtonBuilder().setCustomId(presenceButtonId('onMyWay', spawn.spawn_id)).setLabel('OMW').setEmoji('🏃').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(presenceButtonId('onSite', spawn.spawn_id)).setLabel('No Need').setEmoji('🚫').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(goneButtonId(spawn.spawn_id)).setLabel('Dead').setEmoji('☠️').setStyle(ButtonStyle.Danger),
+    );
+  }
+  if (link) {
+    row.addComponents(link);
   }
 
   const rows = [row];
@@ -240,8 +230,7 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
           .setCustomId(checkButtonId(spawn.monster.id, spawn.server_name))
           .setLabel('My characters')
           .setEmoji('🔍')
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(expired),
+          .setStyle(ButtonStyle.Secondary),
       ),
     );
   }
@@ -338,37 +327,38 @@ function isLink(button: { toJSON(): unknown }): boolean {
 }
 
 /**
- * Reads back which spawn a message we posted belongs to and when it expires
- * (from the <t:unix> timestamp in its embed). null for anything that is not an alert.
+ * Reads back which spawn a message we posted belongs to and when it expires (from the
+ * <t:unix> timestamp in its embed). null for anything that is not an alert. The spawn
+ * comes from the [Hit / Completed] button, so it is null for an alert that is over
+ * (expired or dead), which keeps only the bestiary link.
  */
-export function parsePostedAlert(message: PostedMessage): { spawnId: string; expiresAt: Date } | null {
+export function parsePostedAlert(message: PostedMessage): { spawnId: string | null; expiresAt: Date } | null {
   const target = buttonsOf(message)
     .map((button) => ('customId' in button && button.customId ? parseKillCustomId(button.customId) : null))
     .find((parsed) => parsed?.kind === 'button');
   const field = message.embeds[0]?.fields.find((f) => EXPIRY_FIELDS.includes(f.name));
   const unix = field?.value.match(/<t:(\d+):[a-zA-Z]>/)?.[1];
 
-  return target && unix ? { spawnId: target.spawnId, expiresAt: new Date(Number(unix) * 1000) } : null;
+  return unix ? { spawnId: target?.spawnId ?? null, expiresAt: new Date(Number(unix) * 1000) } : null;
 }
 
-export function allButtonsDisabled(message: PostedMessage): boolean {
-  const buttons = buttonsOf(message).filter((button) => !isLink(button));
-  return buttons.length > 0 && buttons.every((button) => button.disabled);
+/**
+ * An alert that is over: no button left to click but links. Alerts finished before the
+ * buttons were removed still have them, all disabled.
+ */
+export function isFinishedAlert(message: PostedMessage): boolean {
+  return buttonsOf(message)
+    .filter((button) => !isLink(button))
+    .every((button) => button.disabled);
 }
 
-/** The message's button rows with every button disabled. */
-export function disabledButtonRows(message: PostedMessage): ActionRowBuilder<ButtonBuilder>[] {
-  return message.components.flatMap((row) =>
-    row.type === ComponentType.ActionRow
-      ? [
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            row.components
-              .filter((c) => c.type === ComponentType.Button)
-              .map((button) => ButtonBuilder.from(button.toJSON()).setDisabled(!isLink(button))),
-          ),
-        ]
-      : [],
-  );
+/** The message's button rows once the report is over (expired or dead): only links stay. */
+export function finishedButtonRows(message: PostedMessage): ActionRowBuilder<ButtonBuilder>[] {
+  return message.components.flatMap((row) => {
+    if (row.type !== ComponentType.ActionRow) return [];
+    const links = row.components.filter((c) => c.type === ComponentType.Button).filter((button) => isLink(button));
+    return links.length === 0 ? [] : [new ActionRowBuilder<ButtonBuilder>().addComponents(links.map((button) => ButtonBuilder.from(button.toJSON())))];
+  });
 }
 
 /** Discord's message content limit. */

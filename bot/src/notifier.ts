@@ -6,12 +6,12 @@ import type { ApiClient } from './api.js';
 import type { WardenDeleted, WardenExpired, WardenKilled, WardenSpawned } from './events.js';
 import {
   alertHeadline,
-  allButtonsDisabled,
   buildDmNote,
   bestiaryUrlOf,
   buildSpawnMessage,
   chunkMentions,
-  disabledButtonRows,
+  finishedButtonRows,
+  isFinishedAlert,
   killNotice,
   killedAlert,
   killerOf,
@@ -290,7 +290,7 @@ export class Notifier {
       const messages = await channel.messages.fetch({ limit: SWEEP_MESSAGE_LIMIT }).catch(() => null);
       for (const message of messages?.values() ?? []) {
         // Disabled buttons: already expired or already marked dead.
-        if (message.author.id === botId && parsePostedAlert(message)?.spawnId === event.spawn_id && !allButtonsDisabled(message)) {
+        if (message.author.id === botId && parsePostedAlert(message)?.spawnId === event.spawn_id && !isFinishedAlert(message)) {
           alerts.push(message);
         }
       }
@@ -307,7 +307,7 @@ export class Notifier {
 
     try {
       const final = withPresence(embed.toJSON(), presence).toJSON();
-      await alert.edit({ embeds: [killedAlert(final, killer, new Date())], components: disabledButtonRows(alert) });
+      await alert.edit({ embeds: [killedAlert(final, killer, new Date())], components: finishedButtonRows(alert) });
     } catch (error) {
       console.warn(`[notify] Could not mark alert ${alert.id} as killed:`, (error as Error).message);
       return;
@@ -359,7 +359,7 @@ export class Notifier {
 
       for (const message of messages.values()) {
         const alert = message.author.id === botId ? parsePostedAlert(message) : null;
-        if (!alert || this.registry.get(alert.spawnId) || (!this.options.deleteExpired && allButtonsDisabled(message))) {
+        if (!alert || (alert.spawnId && this.registry.get(alert.spawnId)) || (!this.options.deleteExpired && isFinishedAlert(message))) {
           continue;
         }
         const delay = alert.expiresAt.getTime() - Date.now();
@@ -373,7 +373,7 @@ export class Notifier {
       }
     }
 
-    console.info(`[sweep] ${this.options.deleteExpired ? 'Deleted' : 'Disabled'} ${retired} expired alert(s), scheduled ${scheduled} active one(s)`);
+    console.info(`[sweep] ${this.options.deleteExpired ? 'Deleted' : 'Finished'} ${retired} expired alert(s), scheduled ${scheduled} active one(s)`);
   }
 
   /** The daily summary, in each world's alert channels; worlds without reports get none. */
@@ -450,7 +450,7 @@ export class Notifier {
       if (this.options.deleteExpired) {
         await message.delete();
       } else {
-        await message.edit({ components: disabledButtonRows(message) });
+        await message.edit({ components: finishedButtonRows(message) });
       }
     } catch (error) {
       if (!isUnknownMessage(error)) {

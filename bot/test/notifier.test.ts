@@ -1,4 +1,4 @@
-import { ChannelType, Collection } from 'discord.js';
+import { ButtonStyle, ChannelType, Collection } from 'discord.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../src/api.js';
 import type { WardenKilled } from '../src/events.js';
@@ -292,7 +292,8 @@ describe('Notifier', () => {
     expect(embed.title).toBe('💀 Dragon Warden');
     expect(embed.description).toContain('reported by <@7>');
     expect(embed.fields.map((f: { name: string }) => f.name)).toContain('On my way (2)');
-    expect(edit.components[0].toJSON().components.every((c: { disabled: boolean }) => c.disabled)).toBe(true);
+    // Only the bestiary link stays.
+    expect(edit.components.flatMap((row: { toJSON(): any }) => row.toJSON().components).every((c: { style: number }) => c.style === ButtonStyle.Link)).toBe(true);
 
     const reply = alert.reply.mock.calls[0]![0];
     expect(reply.content).toBe('💀 **Dragon Warden** is dead, reported by <@7>. No need to come: <@42>');
