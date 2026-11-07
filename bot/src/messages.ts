@@ -37,7 +37,7 @@ const GONE_BUTTON_PREFIX = 'gone';
 const GONE_CONFIRM_PREFIX = 'gone!';
 /** Footer of channel alerts: what each button means. */
 export const ALERT_HELP = [
-  '🏃 OMW: you are on your way · 🚫 No Need: you do not need it (then anyone can mark it Dead)',
+  '🏃 OMW: you are on your way · 🚫 No Need: the reporter lets anyone mark it Dead',
   '⚔️ Hit / Completed ✅: you attacked it, marks it in your bestiary.',
 ].join('\n');
 /** [My characters]: tells the player privately which of their characters still need the monster. */

@@ -401,7 +401,7 @@ final class WardenSpawnApiTest extends ApiTestCase
         $data = $this->requestJson('POST', \sprintf('/api/v1/warden-spawns/%s/kill', $spawn->getId()), null, $otherToken);
 
         self::assertResponseStatusCodeSame(403);
-        self::assertSame('Only the player who reported this Warden can mark it as dead until someone clicks No Need.', $data['detail']);
+        self::assertSame('Only the player who reported this Warden can mark it as dead until they click No Need.', $data['detail']);
         /** @var InMemoryTransport $transport */
         $transport = static::getContainer()->get('messenger.transport.discord_events');
         self::assertSame([], $transport->getSent());
@@ -414,17 +414,23 @@ final class WardenSpawnApiTest extends ApiTestCase
         self::assertTrue($mine['warden_spawns'][0]['is_yours']);
     }
 
-    public function testAnyoneCanCloseTheReportOnceSomeoneClickedNoNeed(): void
+    public function testAnyoneCanCloseTheReportOnceTheReporterClickedNoNeed(): void
     {
-        $reporter = $this->createUser();
+        $reporter = $this->createUser(discordUserId: '111111111111111111');
         $other = $this->createUser('other@example.com');
         $spawn = $this->createSpawn($reporter);
+        $uri = \sprintf('/api/v1/warden-spawns/%s/kill', $spawn->getId());
         $presence = new WardenSpawnPresence($spawn, '123456789012', new \DateTimeImmutable());
         $presence->replace([], ['333'], new \DateTimeImmutable());
         $this->em->persist($presence);
         $this->em->flush();
 
-        $data = $this->requestJson('POST', \sprintf('/api/v1/warden-spawns/%s/kill', $spawn->getId()), null, $this->tokenFor($other));
+        $this->requestJson('POST', $uri, null, $this->tokenFor($other));
+        self::assertResponseStatusCodeSame(403, 'someone else on the list does not unlock it');
+
+        $presence->replace([], ['111111111111111111'], new \DateTimeImmutable());
+        $this->em->flush();
+        $data = $this->requestJson('POST', $uri, null, $this->tokenFor($other));
 
         self::assertResponseIsSuccessful();
         self::assertSame('KILLED', $data['status']);

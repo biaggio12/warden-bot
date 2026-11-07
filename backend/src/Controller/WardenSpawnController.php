@@ -182,7 +182,7 @@ final class WardenSpawnController extends AbstractController
     /**
      * The Warden was killed before its time ran out: closes the report for everyone
      * and the bot takes the alert down. The reporter may always do it; anyone else
-     * once a player clicked [No Need] on one of its alerts.
+     * once the reporter clicked [No Need] on one of its alerts.
      */
     #[Route('/{id}/kill', name: 'api_warden_spawns_kill', methods: ['POST'])]
     public function kill(
@@ -195,9 +195,9 @@ final class WardenSpawnController extends AbstractController
     ): JsonResponse {
         $spawn = $this->spawns->findByIdString($id) ?? throw $this->createNotFoundException('Report not found.');
         // The reporter is the one at the Warden: they call the attack, so they say when it is over.
-        // Once someone said [No Need], anyone may.
-        if (!$spawn->isReportedBy($user) && !$presences->anyNoNeed($spawn)) {
-            return Problem::response(403, 'Only the player who reported this Warden can mark it as dead until someone clicks No Need.');
+        // Once they clicked [No Need], anyone may.
+        if (!$spawn->isReportedBy($user) && !$presences->reporterSaidNoNeed($spawn)) {
+            return Problem::response(403, 'Only the player who reported this Warden can mark it as dead until they click No Need.');
         }
         if (!$spawn->isActive($this->clock->now())) {
             return Problem::response(409, 'This report is no longer active.');
