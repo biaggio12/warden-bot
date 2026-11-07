@@ -56,7 +56,9 @@ const PRESENCE: Record<PresenceList, { prefix: string; field: string; legacyFiel
 };
 const PRESENCE_ORDER: PresenceList[] = ['onMyWay', 'onSite'];
 /** Field names of alerts posted before the bot switched to English, still recognised when read back. */
-const EXPIRY_FIELDS = ['Disappears', 'Expired', 'Znika', 'Wygasło'];
+const EXPIRY_FIELDS = ['Disappears', 'Expired', 'Removed', 'Znika', 'Wygasło'];
+/** The countdown field of a live alert (current and pre-English name). */
+const COUNTDOWN_FIELDS = ['Disappears', 'Znika'];
 /** Embed field values are capped at 1024 characters. */
 const FIELD_VALUE_LIMIT = 1024;
 /** Players named on a presence list; the rest are counted as "+N". */
@@ -448,15 +450,23 @@ export function killerOf(event: { killed_by_discord_user_id: string | null; kill
 }
 
 /**
- * The alert after [Gone]: marked dead with who reported it, buttons disabled, and the
- * presence lists left as they were, so everyone sees who was on the way. It stays up
- * until the report's original time runs out.
+ * The alert after [Dead]: marked dead with who reported it, only the bestiary link left,
+ * and the presence lists as they were, so everyone sees who was on the way. The live
+ * "Disappears" countdown would keep running into "x minutes ago", so it becomes a fixed
+ * "Killed" time, plus "Removed" with the countdown when the alert does get deleted at
+ * the report's original time (`removedAt`); otherwise the alert simply stays.
  */
-export function killedAlert(embed: APIEmbed, killer: string, at: Date): EmbedBuilder {
-  return EmbedBuilder.from(embed)
+export function killedAlert(embed: APIEmbed, killer: string, at: Date, removedAt: Date | null = null): EmbedBuilder {
+  const fields = (embed.fields ?? []).flatMap((field) => {
+    if (!COUNTDOWN_FIELDS.includes(field.name)) return [field];
+    const killed = { name: 'Killed', value: time(at, TimestampStyles.ShortTime), inline: true };
+    return removedAt ? [killed, { name: 'Removed', value: time(removedAt, TimestampStyles.RelativeTime), inline: true }] : [killed];
+  });
+  return EmbedBuilder.from({ ...embed, fields })
     .setTitle((embed.title ?? '').replace(/^\S+\s+/, '💀 '))
     .setColor(0xb91c1c)
-    .setDescription(`**Killed**, reported by ${killer} ${time(at, TimestampStyles.RelativeTime)}. No need to come.`)
+    // No time here: the "Killed" field has it, and a relative one would keep ageing.
+    .setDescription(`**Killed**, reported by ${killer}. No need to come.`)
     .setFooter({ text: 'The Warden was killed' });
 }
 
