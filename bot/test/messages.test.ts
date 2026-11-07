@@ -18,6 +18,7 @@ import {
   parsePostedAlert,
   withPresence,
   unixSeconds,
+  killedAlert,
 } from '../src/messages.js';
 import { postedAlert, spawnFixture } from './fixtures.js';
 
@@ -251,5 +252,29 @@ describe('bestiary link', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.components).toMatchObject([{ style: ButtonStyle.Link, url }]);
     expect(isFinishedAlert({ ...alert, components: rows.map((r) => ({ type: r.type, components: r.components.map((c: any) => ({ ...c, toJSON: () => c })) })) } as never)).toBe(true);
+  });
+});
+
+describe('killedAlert', () => {
+  const live = () => buildSpawnMessage(spawnFixture()).embeds![0] as { toJSON(): any };
+  const at = new Date('2026-11-07T21:03:00Z');
+  const expiresAt = new Date('2026-11-07T21:30:00Z');
+  const fieldsOf = (embed: { toJSON(): any }) => embed.toJSON().fields.map((f: { name: string; value: string }) => [f.name, f.value]);
+
+  it('swaps the "Disappears" countdown for the fixed kill time', () => {
+    const fields = fieldsOf(killedAlert(live().toJSON(), '<@7>', at));
+    expect(fields.map(([name]: string[]) => name)).toEqual(['Class', 'Killed', 'Reported by', 'Location']);
+    expect(Object.fromEntries(fields).Killed).toBe(`<t:${at.getTime() / 1000}:t>`);
+  });
+
+  it('says who reported it, without a time that keeps ageing', () => {
+    expect(killedAlert(live().toJSON(), '<@7>', at).toJSON().description).toBe('**Killed**, reported by <@7>. No need to come.');
+  });
+
+  it('also says when it is removed, and the bot can still read that time back after a restart', () => {
+    const embed = killedAlert(live().toJSON(), '<@7>', at, expiresAt);
+    expect(Object.fromEntries(fieldsOf(embed)).Removed).toBe(`<t:${expiresAt.getTime() / 1000}:R>`);
+    const parsed = parsePostedAlert({ embeds: [embed.toJSON()], components: [] } as any);
+    expect(parsed?.expiresAt).toEqual(expiresAt);
   });
 });

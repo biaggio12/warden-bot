@@ -305,9 +305,12 @@ export class Notifier {
     // The lists as the buttons last left them, with no edit of theirs still on the way.
     const presence = (await this.presence.close(alert.id, event.spawn_id)) ?? presenceOf(embed.toJSON());
 
+    // Read before the edit: the killed alert no longer has the countdown to read it from.
+    const expiresAt = parsePostedAlert(alert)?.expiresAt;
     try {
       const final = withPresence(embed.toJSON(), presence).toJSON();
-      await alert.edit({ embeds: [killedAlert(final, killer, new Date())], components: finishedButtonRows(alert) });
+      const removedAt = this.options.deleteExpired ? (expiresAt ?? null) : null;
+      await alert.edit({ embeds: [killedAlert(final, killer, new Date(), removedAt)], components: finishedButtonRows(alert) });
     } catch (error) {
       console.warn(`[notify] Could not mark alert ${alert.id} as killed:`, (error as Error).message);
       return;
@@ -327,7 +330,6 @@ export class Notifier {
     }
 
     // The notices go together with the alert.
-    const expiresAt = parsePostedAlert(alert)?.expiresAt;
     if (this.options.deleteExpired && expiresAt) {
       this.schedule(Math.max(0, expiresAt.getTime() - Date.now()), async () => {
         await Promise.all(notices.map((notice) => ignoreUnknownMessage(notice.delete(), 'delete kill notice')));
