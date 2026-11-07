@@ -35,10 +35,10 @@ const KILL_SELECT_PREFIX = 'wks';
 /** [Dead] asks for confirmation; the confirm button then closes the report for everyone. */
 const GONE_BUTTON_PREFIX = 'gone';
 const GONE_CONFIRM_PREFIX = 'gone!';
-/** Footer of channel alerts: players clicked [On site] and forgot [Hit / Completed]. */
+/** Footer of channel alerts: what each button means. */
 export const ALERT_HELP = [
-  '🏃 OMW: you are on your way · 📍 On site: you are at the Warden',
-  '⚔️ Hit / Completed ✅: you attacked it, marks it in your bestiary. Click it even after On site!',
+  '🏃 OMW: you are on your way · 🚫 No Need: you do not need it (then anyone can mark it Dead)',
+  '⚔️ Hit / Completed ✅: you attacked it, marks it in your bestiary.',
 ].join('\n');
 /** [My characters]: tells the player privately which of their characters still need the monster. */
 const CHECK_BUTTON_PREFIX = 'chk';
@@ -51,7 +51,8 @@ export type PresenceList = 'onMyWay' | 'onSite';
 const PRESENCE: Record<PresenceList, { prefix: string; field: string; legacyField?: string }> = {
   // "W drodze": alerts posted before the bot switched to English, still recognised when read back.
   onMyWay: { prefix: 'omw', field: 'On my way', legacyField: 'W drodze' },
-  onSite: { prefix: 'here', field: 'On site' },
+  // [No Need] (formerly [On site]); the list keeps its old id and storage column.
+  onSite: { prefix: 'here', field: 'No need', legacyField: 'On site' },
 };
 const PRESENCE_ORDER: PresenceList[] = ['onMyWay', 'onSite'];
 /** Field names of alerts posted before the bot switched to English, still recognised when read back. */
@@ -125,7 +126,7 @@ export function presenceListOf(customId: string): PresenceList | null {
   return PRESENCE_ORDER.find((list) => customId.startsWith(PRESENCE[list].prefix + SEPARATOR)) ?? null;
 }
 
-/** The spawn an [OMW] / [On site] button belongs to. */
+/** The spawn an [OMW] / [No Need] button belongs to. */
 export function spawnIdOfPresenceButton(customId: string): string | null {
   return presenceListOf(customId) ? customId.split(SEPARATOR)[1] || null : null;
 }
@@ -152,7 +153,7 @@ export interface SpawnMessageOptions {
   note?: string;
   /** Link button to the web app's bestiary, where players update which Wardens they have. */
   bestiaryUrl?: string;
-  /** Adds the [OMW], [On site] and [Gone] buttons; only channel alerts have shared presence lists. */
+  /** Adds the [OMW], [No Need] and [Dead] buttons; only channel alerts have shared presence lists. */
   onMyWay?: boolean;
 }
 
@@ -213,8 +214,8 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
         .setDisabled(expired),
       new ButtonBuilder()
         .setCustomId(presenceButtonId('onSite', spawn.spawn_id))
-        .setLabel('On site')
-        .setEmoji('📍')
+        .setLabel('No Need')
+        .setEmoji('🚫')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(expired),
       new ButtonBuilder()
@@ -278,7 +279,7 @@ export function presenceOf(embed: EmbedLike | undefined): Presence {
 
 /**
  * Clicking a presence button: toggles the player on that list and takes them off the
- * other one (a player is either on the way or on site, never both).
+ * other one (a player is either on the way or does not need it, never both).
  */
 export function togglePresence(presence: Presence, list: PresenceList, userId: string): Presence {
   const without = (ids: string[]) => ids.filter((id) => id !== userId);
@@ -469,7 +470,7 @@ export function killedAlert(embed: APIEmbed, killer: string, at: Date): EmbedBui
     .setFooter({ text: 'The Warden was killed' });
 }
 
-/** The ping to players on the way or on site: edits do not notify, a new message does. */
+/** The ping to players on the way: edits do not notify, a new message does. */
 export function killNotice(monsterName: string | null, killer: string, userIds: string[]): string[] {
   const name = monsterName ? `**${escapeMarkdown(monsterName)}**` : 'The Warden';
   return mentionChunks(`💀 ${name} is dead, reported by ${killer}. No need to come:`, userIds);

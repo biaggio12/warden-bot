@@ -131,7 +131,7 @@ describe('Notifier', () => {
     expect(alert!.payload.content).toBe('**Dragon Warden** <@42> <@43>');
     expect(alert!.payload.allowedMentions).toEqual({ parse: [], users: ['42', '43'], roles: [] });
     expect(alert!.payload.embeds).toHaveLength(1);
-    expect(alert!.payload.components[0].toJSON().components.map((c: { label: string }) => c.label)).toEqual(['Hit / Completed ✅', 'OMW', 'On site', 'Dead']);
+    expect(alert!.payload.components[0].toJSON().components.map((c: { label: string }) => c.label)).toEqual(['Hit / Completed ✅', 'OMW', 'No Need', 'Dead']);
     expect(ctx.user.send).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(999);
@@ -295,8 +295,8 @@ describe('Notifier', () => {
     expect(edit.components[0].toJSON().components.every((c: { disabled: boolean }) => c.disabled)).toBe(true);
 
     const reply = alert.reply.mock.calls[0]![0];
-    expect(reply.content).toBe('💀 **Dragon Warden** is dead, reported by <@7>. No need to come: <@42> <@43>');
-    expect(reply.allowedMentions.users).toEqual(['42', '43']);
+    expect(reply.content).toBe('💀 **Dragon Warden** is dead, reported by <@7>. No need to come: <@42>');
+    expect(reply.allowedMentions.users).toEqual(['42']);
     expect(ctx.channelMessages.delete).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(7 * 60_000);

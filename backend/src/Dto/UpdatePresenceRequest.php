@@ -5,7 +5,7 @@ namespace App\Dto;
 use Symfony\Component\Serializer\Attribute\SerializedName;
 use Symfony\Component\Validator\Constraints as Assert;
 
-/** The full [OMW] / [On site] lists of one alert, in click order. */
+/** The full [OMW] / [No Need] lists of one alert, in click order. */
 final readonly class UpdatePresenceRequest
 {
     public function __construct(

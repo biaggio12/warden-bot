@@ -7,7 +7,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * The [OMW] / [On site] lists of one Discord alert of a report (a report posted on two
+ * The [OMW] / [No Need] lists of one Discord alert of a report (a report posted on two
  * servers has two alerts, each with its own lists). The alert names only the first few
  * players; the full lists, in click order, live here so a bot restart does not lose them.
  */

@@ -21,4 +21,16 @@ class WardenSpawnPresenceRepository extends ServiceEntityRepository
     {
         return $this->findOneBy(['spawn' => $spawn, 'messageId' => $messageId]);
     }
+
+    /** Whether a player clicked [No Need] on any of the report's alerts (stored in on_site). */
+    public function anyNoNeed(WardenSpawn $spawn): bool
+    {
+        foreach ($this->findBy(['spawn' => $spawn]) as $presence) {
+            if ([] !== $presence->getOnSite()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

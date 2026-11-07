@@ -213,8 +213,8 @@ export class Notifier {
 
   /**
    * A player reported the Warden dead. The alert is not removed yet: it is marked dead
-   * with who reported it, its buttons are disabled, and the players on its OMW / On site
-   * lists get a ping. It comes down when its original time runs out, as usual. Alerts
+   * with who reported it, its buttons are disabled, and the players on its OMW
+   * list get a ping. It comes down when its original time runs out, as usual. Alerts
    * the registry does not know (posted before a restart) are looked up in the history.
    */
   async onKilled(event: WardenKilled): Promise<void> {
@@ -313,7 +313,8 @@ export class Notifier {
       return;
     }
 
-    const waiting = [...presence.onMyWay, ...presence.onSite].filter((id) => id !== event.killed_by_discord_user_id);
+    // Players who clicked [No Need] are not waiting for it.
+    const waiting = presence.onMyWay.filter((id) => id !== event.killed_by_discord_user_id);
     if (waiting.length === 0) return;
 
     const notices: Message[] = [];

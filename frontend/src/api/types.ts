@@ -183,7 +183,7 @@ export interface HistoryEntry {
   location_description: string;
   reported_by: { characters: string[]; discord_name: string | null };
   status: 'ACTIVE' | 'KILLED' | 'EXPIRED';
-  /** Players who clicked [On my way] or [On site] on its alerts. */
+  /** Players who clicked [On my way] or [No Need] on its alerts. */
   responded: number;
   created_at: string;
   expires_at: string;

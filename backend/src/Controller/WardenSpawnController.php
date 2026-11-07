@@ -11,6 +11,7 @@ use App\Message\WardenKilledEvent;
 use App\Message\WardenSpawnedEvent;
 use App\Repository\CharacterRepository;
 use App\Repository\MonsterRepository;
+use App\Repository\WardenSpawnPresenceRepository;
 use App\Repository\WardenSpawnRepository;
 use App\Service\CityRegistry;
 use App\Service\DiscordGuildDirectory;
@@ -180,7 +181,8 @@ final class WardenSpawnController extends AbstractController
 
     /**
      * The Warden was killed before its time ran out: closes the report for everyone
-     * and the bot takes the alert down. Any player may do it, like reporting.
+     * and the bot takes the alert down. The reporter may always do it; anyone else
+     * once a player clicked [No Need] on one of its alerts.
      */
     #[Route('/{id}/kill', name: 'api_warden_spawns_kill', methods: ['POST'])]
     public function kill(
@@ -189,11 +191,13 @@ final class WardenSpawnController extends AbstractController
         EntityManagerInterface $em,
         MessageBusInterface $bus,
         LoggerInterface $logger,
+        WardenSpawnPresenceRepository $presences,
     ): JsonResponse {
         $spawn = $this->spawns->findByIdString($id) ?? throw $this->createNotFoundException('Report not found.');
         // The reporter is the one at the Warden: they call the attack, so they say when it is over.
-        if (!$spawn->isReportedBy($user)) {
-            return Problem::response(403, 'Only the player who reported this Warden can mark it as gone.');
+        // Once someone said [No Need], anyone may.
+        if (!$spawn->isReportedBy($user) && !$presences->anyNoNeed($spawn)) {
+            return Problem::response(403, 'Only the player who reported this Warden can mark it as dead until someone clicks No Need.');
         }
         if (!$spawn->isActive($this->clock->now())) {
             return Problem::response(409, 'This report is no longer active.');

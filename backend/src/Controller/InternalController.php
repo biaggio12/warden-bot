@@ -76,7 +76,7 @@ final class InternalController extends AbstractController
     }
 
     /**
-     * The full [OMW] / [On site] lists of one alert (the alert itself names only the first
+     * The full [OMW] / [No Need] lists of one alert (the alert itself names only the first
      * few). Empty lists for an alert nobody has clicked yet.
      */
     #[Route('/warden-spawns/{spawn_id}/presence/{message_id}', name: 'api_internal_presence_get', methods: ['GET'], requirements: ['message_id' => '\d{5,20}'])]

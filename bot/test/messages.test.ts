@@ -148,18 +148,18 @@ describe('reading back a posted alert', () => {
 describe('presence buttons and lists', () => {
   const embed = () => (buildSpawnMessage(spawnFixture()).embeds![0] as { toJSON(): any }).toJSON();
 
-  it('adds [OMW] and [On site] next to [Killed] only when requested', () => {
+  it('adds [OMW] and [No Need] next to [Killed] only when requested', () => {
     const withButtons = (buildSpawnMessage(spawnFixture(), { onMyWay: true }).components![0] as { toJSON(): any }).toJSON();
     const without = (buildSpawnMessage(spawnFixture()).components![0] as { toJSON(): any }).toJSON();
 
-    expect(withButtons.components.map((c: { label: string }) => c.label)).toEqual(['Hit / Completed ✅', 'OMW', 'On site', 'Dead']);
+    expect(withButtons.components.map((c: { label: string }) => c.label)).toEqual(['Hit / Completed ✅', 'OMW', 'No Need', 'Dead']);
     expect(without.components).toHaveLength(1);
   });
 
   it('round-trips both lists through the embed and drops empty fields', () => {
     const listed = withPresence(embed(), { onMyWay: ['111', '222'], onSite: ['333'] }).toJSON();
     expect(listed.fields).toContainEqual({ name: 'On my way (2)', value: '<@111>, <@222>' });
-    expect(listed.fields).toContainEqual({ name: 'On site (1)', value: '<@333>' });
+    expect(listed.fields).toContainEqual({ name: 'No need (1)', value: '<@333>' });
     expect(presenceOf(listed)).toEqual({ onMyWay: ['111', '222'], onSite: ['333'] });
 
     const emptied = withPresence(listed, { onMyWay: [], onSite: [] }).toJSON();
@@ -187,9 +187,9 @@ describe('presence buttons and lists', () => {
   it('shows exactly 10 players without a +N', () => {
     const ids = Array.from({ length: 10 }, (_, i) => String(100000000000000000n + BigInt(i)));
 
-    const field = withPresence(embed(), { onMyWay: [], onSite: ids }).toJSON().fields!.find((f) => f.name.startsWith('On site'))!;
+    const field = withPresence(embed(), { onMyWay: [], onSite: ids }).toJSON().fields!.find((f) => f.name.startsWith('No need'))!;
 
-    expect(field.name).toBe('On site (10)');
+    expect(field.name).toBe('No need (10)');
     expect(field.value).not.toContain('+');
   });
 
@@ -225,7 +225,7 @@ describe('bestiary link', () => {
 
   it('explains the buttons in the footer of a live channel alert', () => {
     const footer = (message: ReturnType<typeof buildSpawnMessage>) => (message.embeds![0] as { toJSON(): any }).toJSON().footer?.text;
-    expect(footer(buildSpawnMessage(spawnFixture(), { onMyWay: true }))).toContain('Click it even after On site!');
+    expect(footer(buildSpawnMessage(spawnFixture(), { onMyWay: true }))).toContain('No Need');
     expect(footer(buildSpawnMessage(spawnFixture(), { note: 'dm' }))).toBeUndefined();
     expect(footer(buildSpawnMessage(spawnFixture(), { onMyWay: true, expired: true }))).toBe('This report has expired');
   });
