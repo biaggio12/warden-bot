@@ -27,6 +27,9 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/api/v1/internal')]
 final class InternalController extends AbstractController
 {
+    /** A month and a bit, for the monthly summary across a summer-time change. */
+    private const SUMMARY_MAX_DAYS = 32;
+
     /** The channels admins chose per server and world (the rest go by channel name). */
     #[Route('/alert-channels', name: 'api_internal_alert_channels', methods: ['GET'])]
     public function alertChannels(AlertChannelRepository $assignments): JsonResponse
@@ -34,20 +37,32 @@ final class InternalController extends AbstractController
         return $this->json(['alert_channels' => array_map(static fn (AlertChannel $a): array => $a->toArray(), $assignments->all())]);
     }
 
-    /** The last 24 hours per world, for the bot's daily post; `until` defaults to now. */
+    /**
+     * What happened per world between `since` and `until`, for the bot's daily, weekly and
+     * monthly posts; `until` defaults to now, `since` to 24 hours before it.
+     */
     #[Route('/daily-summary', name: 'api_internal_daily_summary', methods: ['GET'])]
-    public function dailySummary(SpawnHistory $history, ClockInterface $clock, #[MapQueryParameter] ?string $until = null): JsonResponse
-    {
+    public function dailySummary(
+        SpawnHistory $history,
+        ClockInterface $clock,
+        #[MapQueryParameter] ?string $until = null,
+        #[MapQueryParameter] ?string $since = null,
+    ): JsonResponse {
         try {
             $end = null === $until ? $clock->now() : new \DateTimeImmutable($until);
+            $start = null === $since ? $end->modify('-24 hours') : new \DateTimeImmutable($since);
         } catch (\Exception) {
-            return Problem::response(400, 'until must be a date and time.');
+            return Problem::response(400, 'since and until must be dates and times.');
         }
+        if ($start >= $end || $start < $end->modify('-'.self::SUMMARY_MAX_DAYS.' days')) {
+            return Problem::response(400, 'since must be before until, at most '.self::SUMMARY_MAX_DAYS.' days.');
+        }
+        $utc = new \DateTimeZone('UTC');
 
         return $this->json([
-            'since' => $end->modify('-24 hours')->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM),
-            'until' => $end->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM),
-            'worlds' => $history->dailySummary($end),
+            'since' => $start->setTimezone($utc)->format(\DATE_ATOM),
+            'until' => $end->setTimezone($utc)->format(\DATE_ATOM),
+            'worlds' => $history->summary($start, $end),
         ]);
     }
 

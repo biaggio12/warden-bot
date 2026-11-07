@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DailySummary, buildSummaryMessage, nextRunAt, parseTime, type WorldSummary } from '../src/dailySummary.js';
+import { DailySummary, buildSummaryMessage, nextRunAt, parseTime, summaryWindows, type WorldSummary } from '../src/dailySummary.js';
 
 const monza: WorldSummary = {
   server_name: 'Monza', reports: 4, killed: 2, expired: 1, active: 1, responded: 3,
@@ -27,7 +27,43 @@ describe('nextRunAt', () => {
   });
 });
 
+describe('summaryWindows', () => {
+  const at = (iso: string) => summaryWindows(new Date(iso), [10, 0], 'Europe/Warsaw').map((w) => [w.since.toISOString(), w.heading]);
+
+  it('is only the last 24 hours on an ordinary day', () => {
+    // Thursday 5 November 2026, 10:00 Warsaw.
+    expect(at('2026-11-05T09:00:00Z')).toEqual([['2026-11-04T09:00:00.000Z', 'the last 24 hours']]);
+  });
+
+  it('adds the last 7 days on Mondays', () => {
+    expect(at('2026-11-09T09:00:00Z')).toEqual([
+      ['2026-11-08T09:00:00.000Z', 'the last 24 hours'],
+      ['2026-11-02T09:00:00.000Z', 'the last 7 days'],
+    ]);
+  });
+
+  it('adds the previous month on the 1st, from 10:00 on its 1st (summer time then)', () => {
+    // Sunday 1 November 2026; 1 October was still UTC+2.
+    expect(at('2026-11-01T09:00:00Z')).toEqual([
+      ['2026-10-31T09:00:00.000Z', 'the last 24 hours'],
+      ['2026-10-01T08:00:00.000Z', 'October 2026'],
+    ]);
+    // Monday 1 February 2027: all three, December across the new year.
+    expect(at('2027-02-01T09:00:00Z').map(([, heading]) => heading)).toEqual(['the last 24 hours', 'the last 7 days', 'January 2027']);
+    expect(at('2027-01-01T09:00:00Z')[1]).toEqual(['2026-12-01T09:00:00.000Z', 'December 2026']);
+  });
+
+  it('can leave the weekly and monthly ones out', () => {
+    expect(summaryWindows(new Date('2027-02-01T09:00:00Z'), [10, 0], 'Europe/Warsaw', { weekly: false, monthly: false })).toHaveLength(1);
+  });
+});
+
 describe('buildSummaryMessage', () => {
+  it('takes the heading of a weekly or monthly summary', () => {
+    const message = buildSummaryMessage(monza, new Date('2026-10-01T08:00:00Z'), new Date('2026-11-01T09:00:00Z'), undefined, 'October 2026');
+    expect((message.embeds![0] as { toJSON(): any }).toJSON().title).toBe('📊 Monza: October 2026');
+  });
+
   it('shows the numbers, the Wardens and the reporters, without pinging anyone', () => {
     const message = buildSummaryMessage(monza, new Date('2026-11-03T09:00:00Z'), new Date('2026-11-04T09:00:00Z'), 'https://warden.example/#history');
     const embed = (message.embeds![0] as { toJSON(): any }).toJSON();

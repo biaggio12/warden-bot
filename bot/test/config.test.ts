@@ -43,11 +43,13 @@ describe('loadConfig daily summary', () => {
 
   it('defaults to 10:00 Warsaw time, can be moved or turned off', () => {
     withEnv({});
-    expect(loadConfig()).toMatchObject({ summaryTime: [10, 0], summaryTimeZone: 'Europe/Warsaw' });
+    expect(loadConfig()).toMatchObject({ summaryTime: [10, 0], summaryTimeZone: 'Europe/Warsaw', summaryWeekly: true, summaryMonthly: true });
     withEnv({ DISCORD_SUMMARY_TIME: '9:30', DISCORD_SUMMARY_TIMEZONE: 'UTC' });
     expect(loadConfig()).toMatchObject({ summaryTime: [9, 30], summaryTimeZone: 'UTC' });
     withEnv({ DISCORD_SUMMARY_TIME: 'off' });
     expect(loadConfig().summaryTime).toBeNull();
+    withEnv({ DISCORD_SUMMARY_TIME: '10:00', DISCORD_SUMMARY_WEEKLY: 'false', DISCORD_SUMMARY_MONTHLY: 'no' });
+    expect(loadConfig()).toMatchObject({ summaryWeekly: false, summaryMonthly: false });
   });
 
   it('rejects a bad time or zone', () => {

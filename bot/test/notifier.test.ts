@@ -530,7 +530,7 @@ describe('Notifier daily summary', () => {
     const { notifier, channel } = setup({ frontendUrl: 'https://warden.example/' });
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
-    await notifier.postDailySummary(summary);
+    await notifier.postSummary(summary);
 
     // Only #wardens-monza exists: Antica has no channel here.
     expect(channel.send).toHaveBeenCalledOnce();
@@ -545,7 +545,7 @@ describe('Notifier daily summary', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     channel.send.mockRejectedValueOnce(new Error('Missing Access'));
 
-    await expect(notifier.postDailySummary(summary)).resolves.toBeUndefined();
+    await expect(notifier.postSummary(summary)).resolves.toBeUndefined();
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Could not post'), 'Missing Access');
   });
 });

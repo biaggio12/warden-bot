@@ -88,9 +88,9 @@ export class ApiClient {
     return (await this.request<{ alert_channels: ChannelAssignment[] }>('GET', '/internal/alert-channels')).alert_channels;
   }
 
-  /** What happened on each world in the 24 hours before `until`. */
-  async getDailySummary(until: Date): Promise<DailySummaryData> {
-    return this.request('GET', `/internal/daily-summary?${new URLSearchParams({ until: until.toISOString() })}`);
+  /** What happened on each world between `since` and `until`. */
+  async getSummary(since: Date, until: Date): Promise<DailySummaryData> {
+    return this.request('GET', `/internal/daily-summary?${new URLSearchParams({ since: since.toISOString(), until: until.toISOString() })}`);
   }
 
   async getMonsters(): Promise<Monster[]> {

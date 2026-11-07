@@ -6,7 +6,7 @@ import { AlertPresence } from './alertPresence.js';
 import { ApiClient } from './api.js';
 import { loadConfig, type Config } from './config.js';
 import { EventConsumer } from './consumer.js';
-import { DailySummary } from './dailySummary.js';
+import { DailySummary, summaryWindows } from './dailySummary.js';
 import { startHealthServer } from './health.js';
 import { InteractionHandler, commands } from './interactions.js';
 import { MonsterCatalog } from './monsterCatalog.js';
@@ -104,13 +104,27 @@ async function main(): Promise<void> {
   );
   watchdog.start();
 
-  const summary = config.summaryTime
-    ? new DailySummary(config.summaryTime, config.summaryTimeZone, async (until) => notifier.postDailySummary(await api.getDailySummary(until)))
+  const summaryTime = config.summaryTime;
+  const summary = summaryTime
+    ? new DailySummary(summaryTime, config.summaryTimeZone, async (until) => {
+        const windows = summaryWindows(until, summaryTime, config.summaryTimeZone, { weekly: config.summaryWeekly, monthly: config.summaryMonthly });
+        let failure: unknown = null;
+        // One failing (say the monthly) does not stop the others.
+        for (const { since, heading } of windows) {
+          try {
+            await notifier.postSummary(await api.getSummary(since, until), heading);
+          } catch (error) {
+            failure = error;
+          }
+        }
+        if (failure) throw failure;
+      })
     : null;
   summary?.start();
   console.info(
-    config.summaryTime
-      ? `[summary] Daily at ${config.summaryTime.map((n) => String(n).padStart(2, '0')).join(':')} ${config.summaryTimeZone}`
+    summaryTime
+      ? `[summary] Daily at ${summaryTime.map((n) => String(n).padStart(2, '0')).join(':')} ${config.summaryTimeZone}` +
+          `${config.summaryWeekly ? ', weekly on Mondays' : ''}${config.summaryMonthly ? ', monthly on the 1st' : ''}`
       : '[summary] Disabled (DISCORD_SUMMARY_TIME=off)',
   );
 

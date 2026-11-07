@@ -25,6 +25,10 @@ export interface Config {
   summaryTime: [number, number] | null;
   /** Time zone of summaryTime, e.g. Europe/Warsaw. */
   summaryTimeZone: string;
+  /** At summaryTime on Mondays, also a summary of the last 7 days. */
+  summaryWeekly: boolean;
+  /** At summaryTime on the 1st, also a summary of the previous month. */
+  summaryMonthly: boolean;
 }
 
 function optional(name: string): string | null {
@@ -100,5 +104,7 @@ export function loadConfig(): Config {
       .filter((id) => /^\d{17,20}$/.test(id)),
     summaryTime: summaryTime(),
     summaryTimeZone: summaryTimeZone(),
+    summaryWeekly: flag('DISCORD_SUMMARY_WEEKLY', true),
+    summaryMonthly: flag('DISCORD_SUMMARY_MONTHLY', true),
   };
 }
