@@ -68,7 +68,7 @@ export interface SummaryWindow {
 }
 
 /**
- * The summaries due at `until` (a daily run time): always the last 24 hours, on Mondays
+ * The summaries due at `until` (a daily run time): always the last day, on Mondays
  * also the last 7 days, and on the 1st also the whole previous month.
  */
 export function summaryWindows(
@@ -79,7 +79,8 @@ export function summaryWindows(
 ): SummaryWindow[] {
   const local = new Date(wallClock(until, timeZone));
   const [year, month, day] = [local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()];
-  const windows: SummaryWindow[] = [{ since: new Date(until.getTime() - 24 * HOUR_MS), heading: 'the last 24 hours' }];
+  // From the same time yesterday (not 24 h back), so on a summer-time change no hour is counted twice or skipped.
+  const windows: SummaryWindow[] = [{ since: atWallClock(year, month, day - 1, time, timeZone), heading: 'the last 24 hours' }];
   if (weekly && local.getUTCDay() === 1) {
     windows.push({ since: atWallClock(year, month, day - 7, time, timeZone), heading: 'the last 7 days' });
   }

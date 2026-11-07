@@ -53,6 +53,12 @@ describe('summaryWindows', () => {
     expect(at('2027-01-01T09:00:00Z')[1]).toEqual(['2026-12-01T09:00:00.000Z', 'December 2026']);
   });
 
+  it('starts the day at 10:00 yesterday, so a summer-time change neither repeats nor skips an hour', () => {
+    // 29 March 2026 has 23 hours in Warsaw, 25 October 2026 has 25.
+    expect(at('2026-03-29T08:00:00Z')[0]).toEqual(['2026-03-28T09:00:00.000Z', 'the last 24 hours']);
+    expect(at('2026-10-25T09:00:00Z')[0]).toEqual(['2026-10-24T08:00:00.000Z', 'the last 24 hours']);
+  });
+
   it('can leave the weekly and monthly ones out', () => {
     expect(summaryWindows(new Date('2027-02-01T09:00:00Z'), [10, 0], 'Europe/Warsaw', { weekly: false, monthly: false })).toHaveLength(1);
   });
