@@ -43,7 +43,7 @@ function wallClock(at: Date, timeZone: string): number {
 }
 
 /** The moment the clock in `timeZone` shows that date and time; month and day may overflow, as in Date.UTC. */
-function atWallClock(year: number, month: number, day: number, [hour, minute]: [number, number], timeZone: string): Date {
+export function atWallClock(year: number, month: number, day: number, [hour, minute]: [number, number], timeZone: string): Date {
   const wanted = Date.UTC(year, month, day, hour, minute);
   // Shift by the zone's offset, then once more in case the offset differs at that moment.
   let at = wanted - (wallClock(new Date(wanted), timeZone) - wanted);

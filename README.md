@@ -42,6 +42,9 @@ którym ten potwór jest jeszcze potrzebny. Potwora da się odhaczyć jednym kli
   wiadomości. O tej samej porze w poniedziałki przychodzi też podsumowanie tygodnia (ostatnie 7 dni,
   `DISCORD_SUMMARY_WEEKLY`), a 1. dnia miesiąca podsumowanie poprzedniego miesiąca
   (`DISCORD_SUMMARY_MONTHLY`); oba domyślnie włączone. `DISCORD_SUMMARY_TIME=off` wyłącza wszystkie.
+  Test od ręki: `docker compose exec bot npm run summary -- [RRRR-MM-DD] [--only day|week|month] [--dry-run]`
+  wysyła podsumowania tak, jakby była godzina podsumowania tego dnia (`--dry-run` tylko wypisuje liczby;
+  w obrazie produkcyjnym `node dist/sendSummary.js …`).
 - **Historia:** zakładka *History* pokazuje wszystkie zgłoszenia od najnowszych, z filtrem świata
   i potwora (`GET /warden-spawns/history`, stronicowane po 30).
 

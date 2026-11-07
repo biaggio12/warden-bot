@@ -6,6 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
+    "summary": "tsx src/sendSummary.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
