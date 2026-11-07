@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { Monster } from '../api/types';
 import { endpoints } from '../api/endpoints';
-import { CheckIcon, ChevronIcon, SearchIcon, XIcon } from '../components/Icons';
+import { CheckIcon, ChevronIcon, SearchIcon, UploadIcon, XIcon } from '../components/Icons';
 import MonsterImage from '../components/MonsterImage';
 import SegmentBar from '../components/SegmentBar';
 import SyncIndicator from '../components/SyncIndicator';
+import { useToast } from '../components/Toast';
+import { parseDraptorExport } from '../lib/draptorImport';
 import { useAsync } from '../lib/useAsync';
 import { useKilledMonsters } from '../lib/useKilledMonsters';
 import { EmptyState, PageHead } from '../components/PageHead';
@@ -45,6 +47,27 @@ export default function BestiaryPage() {
   }, [characterId]);
 
   const { killed, status, error, set, retry } = useKilledMonsters(characters.data ? characterId : null);
+  const toast = useToast();
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  /** Ticks the monsters from a TibiaDraptor export for the active character; never unticks any. */
+  async function importDraptor(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !monsters.data) return;
+    try {
+      const { monsterIds, unknown } = parseDraptorExport(await file.text(), monsters.data);
+      const added = monsterIds.filter((id) => !killed.has(id));
+      if (added.length > 0) set(added, true);
+      const name = characters.data?.find((c) => c.id === characterId)?.name ?? 'this character';
+      const parts = [`${added.length} monster(s) ticked for ${name}`];
+      if (monsterIds.length > added.length) parts.push(`${monsterIds.length - added.length} already were`);
+      if (unknown.length > 0) parts.push(`not found: ${unknown.slice(0, 5).join(', ')}${unknown.length > 5 ? ` and ${unknown.length - 5} more` : ''}`);
+      toast(`${parts.join('; ')}.`, unknown.length > 0 ? 'info' : 'success');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  }
 
   const searching = query.trim() !== '';
   const groups = useMemo(() => {
@@ -106,11 +129,22 @@ export default function BestiaryPage() {
           </div>
           <SyncIndicator status={status} error={error} onRetry={retry} />
         </div>
-        <div className="mt-4 flex items-center gap-4">
+        <div className="mt-4 flex flex-wrap items-center gap-4">
           <span className="text-2xl leading-none font-bold whitespace-nowrap tabular-nums">
             {done} <span className="text-muted">/ {total}</span>
           </span>
-          <SegmentBar value={total ? done / total : 0} kind="xp" segments={20} className="flex-1" />
+          <SegmentBar value={total ? done / total : 0} kind="xp" segments={20} className="min-w-40 flex-1" />
+          <input ref={fileInput} type="file" accept=".json,application/json" className="sr-only" tabIndex={-1} aria-hidden="true" onChange={(e) => void importDraptor(e)} />
+          <button
+            type="button"
+            className="btn w-full disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto"
+            disabled={disabled || !monsters.data}
+            onClick={() => fileInput.current?.click()}
+            title="Tick the monsters from a TibiaDraptor export file"
+          >
+            <UploadIcon />
+            Import from TibiaDraptor
+          </button>
         </div>
       </div>
 
