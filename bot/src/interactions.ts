@@ -24,6 +24,7 @@ import {
   parseGoneCustomId,
   parseKillCustomId,
   presenceListOf,
+  presenceOf,
   spawnIdOfPresenceButton,
   reporterIdOfAlert,
   togglePresence,
@@ -34,7 +35,8 @@ import type { MonsterCatalog } from './monsterCatalog.js';
 import { ReportCommand, UserError, reportCommand } from './reportCommand.js';
 
 /** Same words as the backend's 403, for the answer given before asking it. */
-const ONLY_THE_REPORTER = 'Only the player who reported this Warden can mark it as gone.';
+const ONLY_THE_REPORTER = 'Only the player who reported this Warden can mark it as dead until they click No Need.';
+const ONLY_THE_REPORTER_NO_NEED = 'Only the player who reported this Warden can click No Need.';
 
 export const commands = [
   new SlashCommandBuilder()
@@ -118,13 +120,18 @@ export class InteractionHandler {
   }
 
   /**
-   * [OMW] / [On site] put the player on that list of the alert (and off the other one);
-   * clicking the same button again takes them off. Each alert (channel) keeps its own
+   * [OMW] / [No Need] put the player on that list of the alert (and off the other one);
+   * clicking the same button again takes them off. Only the reporter may click [No Need]:
+   * it hands [Dead] over to everyone. Each alert (channel) keeps its own
    * lists; the full ones are saved in the backend, the alert names the first few. The click is
    * acknowledged at once; the edit goes through AlertPresence, so simultaneous clicks
    * all end up on the list.
    */
   private async handlePresence(interaction: ButtonInteraction, list: PresenceList): Promise<void> {
+    if (list === 'onSite' && reporterIdOfAlert(interaction.message) !== interaction.user.id) {
+      await interaction.reply({ content: `⚠️ ${ONLY_THE_REPORTER_NO_NEED}`, flags: MessageFlags.Ephemeral });
+      return;
+    }
     await interaction.deferUpdate();
     const embed = interaction.message.embeds[0];
     const spawnId = spawnIdOfPresenceButton(interaction.customId);
@@ -141,14 +148,16 @@ export class InteractionHandler {
 
   /**
    * [Gone] on the alert asks first (closing a report affects everyone); the confirm
-   * button in that ephemeral reply closes it. Only the reporter may: they are at the
-   * Warden and call the attack (the backend enforces it, this only answers at once). The backend then publishes warden.killed
+   * button in that ephemeral reply closes it. The reporter may (they are at the Warden and
+   * call the attack); anyone else once the reporter clicked [No Need] on the alert (the backend
+   * enforces it, this only answers at once). The backend then publishes warden.killed
    * and the notifier marks the alert dead and pings the players on the way.
    */
   private async handleGone(interaction: ButtonInteraction, gone: { spawnId: string; confirm: boolean }): Promise<void> {
     if (!gone.confirm) {
       const reporter = reporterIdOfAlert(interaction.message);
-      if (reporter !== undefined && reporter !== interaction.user.id) {
+      const handedOver = !!reporter && presenceOf(interaction.message.embeds[0]?.toJSON()).onSite.includes(reporter);
+      if (reporter !== undefined && reporter !== interaction.user.id && !handedOver) {
         await interaction.reply({ content: `⚠️ ${ONLY_THE_REPORTER}`, flags: MessageFlags.Ephemeral });
         return;
       }

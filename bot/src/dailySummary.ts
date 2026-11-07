@@ -12,7 +12,7 @@ export interface WorldSummary {
   killed: number;
   expired: number;
   active: number;
-  /** Players who clicked [On my way] or [On site] on any of the alerts. */
+  /** Players who clicked [On my way] or [No Need] on any of the alerts. */
   responded: number;
   monsters: NamedCount[];
   reporters: NamedCount[];

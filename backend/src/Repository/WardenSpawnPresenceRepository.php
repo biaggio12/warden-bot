@@ -21,4 +21,23 @@ class WardenSpawnPresenceRepository extends ServiceEntityRepository
     {
         return $this->findOneBy(['spawn' => $spawn, 'messageId' => $messageId]);
     }
+
+    /**
+     * Whether the reporter clicked [No Need] on any of the report's alerts (stored in
+     * on_site): they hand [Dead] over to everyone.
+     */
+    public function reporterSaidNoNeed(WardenSpawn $spawn): bool
+    {
+        $discordUserId = $spawn->getReportedBy()?->getDiscordUserId();
+        if (null === $discordUserId) {
+            return false;
+        }
+        foreach ($this->findBy(['spawn' => $spawn]) as $presence) {
+            if (\in_array($discordUserId, $presence->getOnSite(), true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

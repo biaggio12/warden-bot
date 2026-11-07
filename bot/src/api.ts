@@ -69,7 +69,7 @@ export class ApiClient {
     return body.recipients;
   }
 
-  /** The full [OMW] / [On site] lists of one alert (empty for one nobody clicked). */
+  /** The full [OMW] / [No Need] lists of one alert (empty for one nobody clicked). */
   async getPresence(spawnId: string, messageId: string): Promise<Presence> {
     const body = await this.request<{ on_my_way: string[]; on_site: string[] }>('GET', this.presencePath(spawnId, messageId));
     return { onMyWay: body.on_my_way, onSite: body.on_site };

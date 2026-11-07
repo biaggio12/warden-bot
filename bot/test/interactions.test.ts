@@ -120,13 +120,24 @@ describe('presence buttons', () => {
     expect(presenceIn(leave.editReply.mock.calls[0]![0])).toEqual({ onMyWay: ['111'], onSite: [] });
   });
 
-  it('[On site] moves the player from "On my way" to "On site"', async () => {
+  it('[No Need] moves the reporter from "On my way" to "No need"', async () => {
     const { handler } = setup([]);
 
-    const arrive = click('onSite', alertMessage(['111', '999000']), '999000');
+    const arrive = click('onSite', alertMessage(['111', '999000'], [], '999000'), '999000');
     await handler.handle(arrive as never);
 
     expect(presenceIn(arrive.editReply.mock.calls[0]![0])).toEqual({ onMyWay: ['111'], onSite: ['999000'] });
+  });
+
+  it('[No Need] is only for the reporter', async () => {
+    const { handler } = setup([]);
+    const other = { ...click('onSite', alertMessage(['999000'], [], '111'), '999000'), reply: vi.fn().mockResolvedValue(undefined) };
+
+    await handler.handle(other as never);
+
+    expect(other.deferUpdate).not.toHaveBeenCalled();
+    expect(other.editReply).not.toHaveBeenCalled();
+    expect(other.reply).toHaveBeenCalledWith({ content: '⚠️ Only the player who reported this Warden can click No Need.', flags: MessageFlags.Ephemeral });
   });
 
   it('keeps every player when many click at once on the same old copy of the alert', async () => {
@@ -163,7 +174,7 @@ describe('[Killed] takes the player off the presence lists', () => {
     expect(presenceIn(alert.edit.mock.calls[0]![0])).toEqual({ onMyWay: ['111'], onSite: [] });
   });
 
-  it('scenario A: also takes the player off "On site"', async () => {
+  it('scenario A: also takes the player off "No need"', async () => {
     const { handler, interaction } = setup([{ id: 'char-1', name: 'Sir Tester' }]);
     const alert = alertMessage(['111'], ['999000', '222']);
     Object.assign(interaction, { message: alert });
@@ -225,13 +236,13 @@ describe('[Killed] takes the player off the presence lists', () => {
 });
 
 describe('[Gone] button', () => {
-  function click(customId: string, reporterId: string | null = '999000') {
+  function click(customId: string, reporterId: string | null = '999000', noNeed: string[] = []) {
     const api = { killSpawn: vi.fn().mockResolvedValue(undefined) } as unknown as ApiClient & { killSpawn: ReturnType<typeof vi.fn> };
     const handler = new InteractionHandler(api, {} as MonsterCatalog, 'http://panel');
     const interaction = {
       customId,
       user: { id: '999000' },
-      message: alertMessage([], [], reporterId),
+      message: alertMessage([], noNeed, reporterId),
       deferred: false,
       replied: false,
       isAutocomplete: () => false,
@@ -260,6 +271,14 @@ describe('[Gone] button', () => {
     expect(reply.components[0].toJSON().components[0].custom_id).toBe(goneButtonId('spawn-1', true));
   });
 
+  it('lets anyone close it once the reporter clicked [No Need]', async () => {
+    const { handler, interaction } = click(goneButtonId('spawn-1'), '111222333444555666', ['111222333444555666']);
+
+    await handler.handle(interaction as never);
+
+    expect(interaction.reply.mock.calls[0]![0].components[0].toJSON().components[0].custom_id).toBe(goneButtonId('spawn-1', true));
+  });
+
   it('tells other players that only the reporter can close it', async () => {
     for (const reporterId of ['111222333444555666', null]) {
       const { api, handler, interaction } = click(goneButtonId('spawn-1'), reporterId);
@@ -268,7 +287,7 @@ describe('[Gone] button', () => {
 
       expect(api.killSpawn).not.toHaveBeenCalled();
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '⚠️ Only the player who reported this Warden can mark it as gone.',
+        content: '⚠️ Only the player who reported this Warden can mark it as dead until they click No Need.',
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -276,11 +295,11 @@ describe('[Gone] button', () => {
 
   it('shows the backend refusal on the confirm button (e.g. an old alert)', async () => {
     const { api, handler, interaction } = click(goneButtonId('spawn-1', true));
-    api.killSpawn.mockRejectedValue(new ApiError(403, { detail: 'Only the player who reported this Warden can mark it as gone.' }));
+    api.killSpawn.mockRejectedValue(new ApiError(403, { detail: 'Only the player who reported this Warden can mark it as dead until they click No Need.' }));
 
     await handler.handle(interaction as never);
 
-    expect(interaction.editReply).toHaveBeenCalledWith({ content: '⚠️ Only the player who reported this Warden can mark it as gone.', components: [] });
+    expect(interaction.editReply).toHaveBeenCalledWith({ content: '⚠️ Only the player who reported this Warden can mark it as dead until they click No Need.', components: [] });
   });
 
   it('closes the report once confirmed', async () => {

@@ -4,6 +4,7 @@ namespace App\Tests\Functional;
 
 use App\Entity\User;
 use App\Entity\WardenSpawn;
+use App\Entity\WardenSpawnPresence;
 use App\Message\WardenKilledEvent;
 use App\Message\WardenSpawnedEvent;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
@@ -400,7 +401,7 @@ final class WardenSpawnApiTest extends ApiTestCase
         $data = $this->requestJson('POST', \sprintf('/api/v1/warden-spawns/%s/kill', $spawn->getId()), null, $otherToken);
 
         self::assertResponseStatusCodeSame(403);
-        self::assertSame('Only the player who reported this Warden can mark it as gone.', $data['detail']);
+        self::assertSame('Only the player who reported this Warden can mark it as dead until they click No Need.', $data['detail']);
         /** @var InMemoryTransport $transport */
         $transport = static::getContainer()->get('messenger.transport.discord_events');
         self::assertSame([], $transport->getSent());
@@ -411,6 +412,28 @@ final class WardenSpawnApiTest extends ApiTestCase
 
         $mine = $this->requestJson('GET', '/api/v1/warden-spawns?server_name=Monza', null, $reporterToken);
         self::assertTrue($mine['warden_spawns'][0]['is_yours']);
+    }
+
+    public function testAnyoneCanCloseTheReportOnceTheReporterClickedNoNeed(): void
+    {
+        $reporter = $this->createUser(discordUserId: '111111111111111111');
+        $other = $this->createUser('other@example.com');
+        $spawn = $this->createSpawn($reporter);
+        $uri = \sprintf('/api/v1/warden-spawns/%s/kill', $spawn->getId());
+        $presence = new WardenSpawnPresence($spawn, '123456789012', new \DateTimeImmutable());
+        $presence->replace([], ['333'], new \DateTimeImmutable());
+        $this->em->persist($presence);
+        $this->em->flush();
+
+        $this->requestJson('POST', $uri, null, $this->tokenFor($other));
+        self::assertResponseStatusCodeSame(403, 'someone else on the list does not unlock it');
+
+        $presence->replace([], ['111111111111111111'], new \DateTimeImmutable());
+        $this->em->flush();
+        $data = $this->requestJson('POST', $uri, null, $this->tokenFor($other));
+
+        self::assertResponseIsSuccessful();
+        self::assertSame('KILLED', $data['status']);
     }
 
     public function testCannotCloseAReportTwice(): void
