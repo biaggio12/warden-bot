@@ -130,9 +130,12 @@ services:
       # Seconds the @mentions stay in an alert before it is edited down to the Warden's name
       DISCORD_PING_CLEANUP_SECONDS: ${DISCORD_PING_CLEANUP_SECONDS:-1}
       DISCORD_PING_ROLE_IDS: ${DISCORD_PING_ROLE_IDS:-}
-      # Daily summary of the last 24 hours in each world's alert channel ("HH:MM" or off)
+      # Daily summary of the last 24 hours in each world's alert channel ("HH:MM" or off),
+      # plus the last 7 days on Mondays and the previous month on the 1st
       DISCORD_SUMMARY_TIME: ${DISCORD_SUMMARY_TIME:-10:00}
       DISCORD_SUMMARY_TIMEZONE: ${DISCORD_SUMMARY_TIMEZONE:-Europe/Warsaw}
+      DISCORD_SUMMARY_WEEKLY: ${DISCORD_SUMMARY_WEEKLY:-true}
+      DISCORD_SUMMARY_MONTHLY: ${DISCORD_SUMMARY_MONTHLY:-true}
       # Sentry: own project via SENTRY_DSN_BOT, otherwise the backend's DSN
       SENTRY_DSN: ${SENTRY_DSN_BOT:-${SENTRY_DSN:-}}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}

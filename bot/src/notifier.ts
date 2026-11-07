@@ -376,12 +376,12 @@ export class Notifier {
     console.info(`[sweep] ${this.options.deleteExpired ? 'Deleted' : 'Finished'} ${retired} expired alert(s), scheduled ${scheduled} active one(s)`);
   }
 
-  /** The daily summary, in each world's alert channels; worlds without reports get none. */
-  async postDailySummary(summary: DailySummaryData): Promise<void> {
+  /** A summary (daily, weekly or monthly), in each world's alert channels; worlds without reports get none. */
+  async postSummary(summary: DailySummaryData, heading = 'the last 24 hours'): Promise<void> {
     const since = new Date(summary.since);
     const until = new Date(summary.until);
     if (!this.client?.user) {
-      console.info(`[dry-run] Daily summary: ${summary.worlds.map((w) => `${w.server_name} ${w.reports} report(s)`).join(', ') || 'no reports'}`);
+      console.info(`[dry-run] Summary of ${heading}: ${summary.worlds.map((w) => `${w.server_name} ${w.reports} report(s)`).join(', ') || 'no reports'}`);
       return;
     }
     const historyUrl = this.options.frontendUrl ? `${this.options.frontendUrl.replace(/\/+$/, '')}/#history` : undefined;
@@ -389,14 +389,14 @@ export class Notifier {
     for (const world of summary.worlds) {
       for (const channel of await this.alertChannels(world.server_name)) {
         try {
-          await channel.send(buildSummaryMessage(world, since, until, historyUrl));
+          await channel.send(buildSummaryMessage(world, since, until, historyUrl, heading));
           posted++;
         } catch (error) {
           console.warn(`[summary] Could not post in #${channel.name} (${channel.guild.name}):`, (error as Error).message);
         }
       }
     }
-    console.info(`[summary] Daily summary of ${summary.worlds.length} world(s) posted in ${posted} channel(s)`);
+    console.info(`[summary] Summary of ${heading} for ${summary.worlds.length} world(s) posted in ${posted} channel(s)`);
   }
 
   dispose(): void {

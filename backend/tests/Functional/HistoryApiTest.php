@@ -108,6 +108,17 @@ final class HistoryApiTest extends ApiTestCase
         $earlier = $this->requestJson('GET', '/api/v1/internal/daily-summary?until='.urlencode((new \DateTimeImmutable('-12 hours'))->format(\DATE_ATOM)), token: self::BOT_TOKEN);
         self::assertSame(2, $earlier['worlds'][0]['reports'], 'the Dragon from 30 h and the Hydra from 20 h ago');
 
+        $week = $this->requestJson('GET', '/api/v1/internal/daily-summary?'.http_build_query([
+            'since' => (new \DateTimeImmutable('-7 days'))->format(\DATE_ATOM),
+            'until' => (new \DateTimeImmutable())->format(\DATE_ATOM),
+        ]), token: self::BOT_TOKEN);
+        self::assertSame(5, $week['worlds'][0]['reports'], 'the 30 h old Dragon counts in the week');
+
+        $this->requestJson('GET', '/api/v1/internal/daily-summary?'.http_build_query([
+            'since' => (new \DateTimeImmutable('-40 days'))->format(\DATE_ATOM),
+        ]), token: self::BOT_TOKEN);
+        self::assertResponseStatusCodeSame(400);
+
         $this->requestJson('GET', '/api/v1/internal/daily-summary', token: $myToken);
         self::assertResponseStatusCodeSame(403);
     }

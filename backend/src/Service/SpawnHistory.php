@@ -8,8 +8,8 @@ use Doctrine\DBAL\Connection;
 use Psr\Clock\ClockInterface;
 
 /**
- * Past reports: the History tab (newest first, page by page) and the bot's daily
- * summary of the last 24 hours per world. A report still ACTIVE after its time is
+ * Past reports: the History tab (newest first, page by page) and the bot's daily,
+ * weekly and monthly summaries per world. A report still ACTIVE after its time is
  * shown as EXPIRED, as the expiry worker would leave it.
  */
 final readonly class SpawnHistory
@@ -89,8 +89,8 @@ final readonly class SpawnHistory
     }
 
     /**
-     * What happened on each world in the 24 hours before `$until`, for the bot's daily
-     * post. Worlds without reports are left out.
+     * What happened on each world from `$since` up to `$until`, for the bot's summaries.
+     * Worlds without reports are left out.
      *
      * @return list<array{
      *     server_name: string, reports: int, killed: int, expired: int, active: int, responded: int,
@@ -98,12 +98,12 @@ final readonly class SpawnHistory
      *     reporters: list<array{name: string, reports: int}>
      * }>
      */
-    public function dailySummary(\DateTimeImmutable $until): array
+    public function summary(\DateTimeImmutable $since, \DateTimeImmutable $until): array
     {
-        $until = $until->setTimezone(new \DateTimeZone('UTC'));
+        $utc = new \DateTimeZone('UTC');
         $params = [
-            'since' => $until->modify('-24 hours')->format('Y-m-d H:i:s'),
-            'until' => $until->format('Y-m-d H:i:s'),
+            'since' => $since->setTimezone($utc)->format('Y-m-d H:i:s'),
+            'until' => $until->setTimezone($utc)->format('Y-m-d H:i:s'),
             'now' => $this->now(),
         ];
         $window = 's.created_at >= :since AND s.created_at < :until';

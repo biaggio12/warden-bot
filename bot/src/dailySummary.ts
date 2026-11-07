@@ -1,11 +1,13 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, TimestampStyles, escapeMarkdown, time, type BaseMessageOptions } from 'discord.js';
 
+const HOUR_MS = 3_600_000;
+
 export interface NamedCount {
   name: string;
   reports: number;
 }
 
-/** One world's last 24 hours, as /internal/daily-summary returns it. */
+/** One world's numbers for the summary's window, as /internal/daily-summary returns them. */
 export interface WorldSummary {
   server_name: string;
   reports: number;
@@ -40,26 +42,63 @@ function wallClock(at: Date, timeZone: string): number {
   return Date.UTC(parts.year!, parts.month! - 1, parts.day!, parts.hour!, parts.minute!, parts.second!);
 }
 
+/** The moment the clock in `timeZone` shows that date and time; month and day may overflow, as in Date.UTC. */
+export function atWallClock(year: number, month: number, day: number, [hour, minute]: [number, number], timeZone: string): Date {
+  const wanted = Date.UTC(year, month, day, hour, minute);
+  // Shift by the zone's offset, then once more in case the offset differs at that moment.
+  let at = wanted - (wallClock(new Date(wanted), timeZone) - wanted);
+  at = wanted - (wallClock(new Date(at), timeZone) - at);
+  return new Date(at);
+}
+
 /** The next moment after `now` when the clock in `timeZone` shows hour:minute (summer time included). */
-export function nextRunAt(now: Date, [hour, minute]: [number, number], timeZone: string): Date {
+export function nextRunAt(now: Date, time: [number, number], timeZone: string): Date {
   const today = new Date(wallClock(now, timeZone));
   for (let day = 0; day <= 2; day++) {
-    const wanted = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + day, hour, minute);
-    // Shift by the zone's offset, then once more in case the offset differs at that moment.
-    let at = wanted - (wallClock(new Date(wanted), timeZone) - wanted);
-    at = wanted - (wallClock(new Date(at), timeZone) - at);
-    if (at > now.getTime()) return new Date(at);
+    const at = atWallClock(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + day, time, timeZone);
+    if (at > now) return at;
   }
   throw new Error('unreachable');
+}
+
+export interface SummaryWindow {
+  since: Date;
+  /** Goes into the title: "📊 Monza: <heading>". */
+  heading: string;
+}
+
+/**
+ * The summaries due at `until` (a daily run time): always the last day, on Mondays
+ * also the last 7 days, and on the 1st also the whole previous month.
+ */
+export function summaryWindows(
+  until: Date,
+  time: [number, number],
+  timeZone: string,
+  { weekly = true, monthly = true }: { weekly?: boolean; monthly?: boolean } = {},
+): SummaryWindow[] {
+  const local = new Date(wallClock(until, timeZone));
+  const [year, month, day] = [local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()];
+  // From the same time yesterday (not 24 h back), so on a summer-time change no hour is counted twice or skipped.
+  const windows: SummaryWindow[] = [{ since: atWallClock(year, month, day - 1, time, timeZone), heading: 'the last 24 hours' }];
+  if (weekly && local.getUTCDay() === 1) {
+    windows.push({ since: atWallClock(year, month, day - 7, time, timeZone), heading: 'the last 7 days' });
+  }
+  if (monthly && day === 1) {
+    const since = atWallClock(year, month - 1, 1, time, timeZone);
+    const name = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(Date.UTC(year, month - 1, 1));
+    windows.push({ since, heading: name });
+  }
+  return windows;
 }
 
 const list = (rows: NamedCount[], numbered: boolean) =>
   rows.map((r, i) => `${numbered ? `${i + 1}. ` : ''}${escapeMarkdown(r.name)} — ${r.reports}`).join('\n');
 
-export function buildSummaryMessage(world: WorldSummary, since: Date, until: Date, historyUrl?: string): BaseMessageOptions {
+export function buildSummaryMessage(world: WorldSummary, since: Date, until: Date, historyUrl?: string, heading = 'the last 24 hours'): BaseMessageOptions {
   const embed = new EmbedBuilder()
     .setColor(0x2563eb)
-    .setTitle(`📊 ${world.server_name}: the last 24 hours`)
+    .setTitle(`📊 ${world.server_name}: ${heading}`)
     .setDescription(`${time(since, TimestampStyles.ShortDateTime)} – ${time(until, TimestampStyles.ShortDateTime)}`)
     .addFields({ name: 'Reports', value: String(world.reports) });
   if (world.monsters.length > 0) embed.addFields({ name: 'Wardens', value: list(world.monsters, false) });
@@ -71,11 +110,10 @@ export function buildSummaryMessage(world: WorldSummary, since: Date, until: Dat
   return { embeds: [embed], components, allowedMentions: { parse: [] } };
 }
 
-const HOUR_MS = 3_600_000;
-
 /**
- * Posts the summary once a day at the configured time. A run that fails is not retried:
- * the next one comes the day after, as usual.
+ * Runs once a day at the configured time (the run posts the daily summary, and the weekly
+ * and monthly ones when they are due). A run that fails is not retried: the next one comes
+ * the day after, as usual.
  */
 export class DailySummary {
   private timer: NodeJS.Timeout | null = null;
