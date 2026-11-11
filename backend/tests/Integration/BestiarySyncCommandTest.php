@@ -61,9 +61,12 @@ final class BestiarySyncCommandTest extends KernelTestCase
         $entries = BestiaryData::load();
         $names = array_column($entries, 'name');
 
-        self::assertGreaterThan(800, \count($entries));
+        self::assertGreaterThan(700, \count($entries));
         self::assertSame(\count($names), \count(array_unique(array_map('mb_strtolower', $names))), 'names are unique');
         self::assertContains('Dragon Lord', $names);
+        foreach (['Kollos', 'Yeti', 'Midnight Panther', 'Askarak Prince'] as $notAWarden) {
+            self::assertNotContains($notAWarden, $names, 'only creatures that can be an Echo Warden');
+        }
         self::assertLessThanOrEqual(100, max(array_map('mb_strlen', $names)), 'fits monsters.name');
         self::assertLessThanOrEqual(512, max(array_map(static fn (array $e) => mb_strlen((string) $e['image_url']), $entries)), 'fits monsters.image_url');
         self::assertCount(\count($entries), array_filter(array_column($entries, 'image_url')), 'every creature has a GIF');
