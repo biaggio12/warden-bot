@@ -11,6 +11,7 @@ import {
   buildSpawnMessage,
   chunkMentions,
   finishedButtonRows,
+  finishedEmbed,
   isFinishedAlert,
   killNotice,
   killedAlert,
@@ -450,7 +451,11 @@ export class Notifier {
       if (this.options.deleteExpired) {
         await message.delete();
       } else {
-        await message.edit({ components: finishedButtonRows(message) });
+        const [embed, ...rest] = message.embeds;
+        await message.edit({
+          embeds: embed ? [finishedEmbed(embed.toJSON()), ...rest] : [],
+          components: finishedButtonRows(message),
+        });
       }
     } catch (error) {
       if (!isUnknownMessage(error)) {

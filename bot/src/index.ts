@@ -1,6 +1,7 @@
 import { sentryEnabled } from './instrument.js';
 import * as Sentry from '@sentry/node';
 import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
+import { ELEMENTS, ELEMENT_EMOJI_NAMES, setElementEmojis } from './sensitivities.js';
 import { AlertChannels } from './alertChannels.js';
 import { AlertPresence } from './alertPresence.js';
 import { ApiClient } from './api.js';
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
         console.error('[discord] Slash command registration failed:', error),
       );
       notifier.sweepChannels().catch((error) => console.error('[sweep] Failed:', error));
+      loadElementEmojis(ready).catch((error) => console.error('[emojis] Failed:', error));
     });
     client.on(Events.InteractionCreate, (interaction) => void interactions.handle(interaction));
     client.on(Events.Error, (error) => {
@@ -149,3 +151,14 @@ main().catch(async (error) => {
   await Sentry.close(2000);
   process.exit(1);
 });
+
+/**
+ * Element emojis for the alerts' Sensitivities line: the bot's own application emojis first, then
+ * those of the servers it is in. Any it cannot find show as text (":fire: 110%").
+ */
+async function loadElementEmojis(ready: Client<true>): Promise<void> {
+  const own = await ready.application.emojis.fetch().catch(() => null);
+  const found = setElementEmojis([...(own?.values() ?? []), ...ready.emojis.cache.values()]);
+  const missing = ELEMENTS.filter((element) => !found[element]).map((element) => `:${ELEMENT_EMOJI_NAMES[element]}:`);
+  console.info(`[emojis] Element emojis: ${Object.keys(found).length}/${ELEMENTS.length}${missing.length ? `, missing ${missing.join(' ')}` : ''}`);
+}

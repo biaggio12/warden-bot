@@ -14,6 +14,7 @@ import {
 } from 'discord.js';
 import type { CharacterRef } from './api.js';
 import type { WardenSpawned } from './events.js';
+import { formatSensitivities } from './sensitivities.js';
 
 /**
  * Creature GIF on Tibiopedia. Discord's proxy shows Fandom's GIFs as still WebP frames, Tibiopedia's animate.
@@ -62,6 +63,8 @@ const FIELD_VALUE_LIMIT = 1024;
 /** Players named on a presence list; the rest are counted as "+N". */
 export const PRESENCE_VISIBLE = 10;
 const SEPARATOR = '|';
+/** Element damage of the Warden; only useful while it can still be hunted, so dropped once the report is over. */
+const SENSITIVITIES_FIELD = 'Sensitivities';
 
 export interface KillTarget {
   spawnId: string;
@@ -184,6 +187,10 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
     .setTimestamp(new Date(spawn.created_at));
 
   embed.setThumbnail(tibiopediaImageUrl(spawn.monster.name));
+  const sensitivities = expired ? null : formatSensitivities(spawn.monster.name);
+  if (sensitivities) {
+    embed.addFields({ name: SENSITIVITIES_FIELD, value: sensitivities });
+  }
   if (spawn.additional_info) {
     embed.addFields({ name: 'Additional info', value: escapeMarkdown(spawn.additional_info).slice(0, 1024) });
   }
@@ -352,6 +359,11 @@ export function isFinishedAlert(message: PostedMessage): boolean {
     .every((button) => button.disabled);
 }
 
+/** The alert's embed once the report is over (expired or dead): the Sensitivities field is dropped. */
+export function finishedEmbed(embed: APIEmbed): EmbedBuilder {
+  return EmbedBuilder.from(embed).setFields((embed.fields ?? []).filter((f) => f.name !== SENSITIVITIES_FIELD));
+}
+
 /** The message's button rows once the report is over (expired or dead): only links stay. */
 export function finishedButtonRows(message: PostedMessage): ActionRowBuilder<ButtonBuilder>[] {
   return message.components.flatMap((row) => {
@@ -453,7 +465,7 @@ export function killerOf(event: { killed_by_discord_user_id: string | null; kill
  * until the report's original time runs out.
  */
 export function killedAlert(embed: APIEmbed, killer: string, at: Date): EmbedBuilder {
-  return EmbedBuilder.from(embed)
+  return finishedEmbed(embed)
     .setTitle((embed.title ?? '').replace(/^\S+\s+/, '💀 '))
     .setColor(0xb91c1c)
     .setDescription(`**Killed**, reported by ${killer} ${time(at, TimestampStyles.RelativeTime)}. No need to come.`)
