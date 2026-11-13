@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildSpawnMessage, finishedEmbed, killedAlert } from '../src/messages.js';
-import { formatSensitivities, sensitivitiesOf, setElementEmojis } from '../src/sensitivities.js';
+import { formatSensitivities, formatWardenHp, sensitivitiesOf, setElementEmojis, wardenHpOf } from '../src/monsterStats.js';
 import { spawnFixture } from './fixtures.js';
 
 const ALL_EMOJIS = ['physical', 'earth', 'fire', 'death', 'energy', 'holy', 'ice'].map((name, i) => ({ id: String(i + 1), name }));
@@ -60,5 +60,25 @@ describe('sensitivities once the report is over', () => {
   it('are removed from an alert retired after a restart, keeping the other fields', () => {
     const embed = live();
     expect(names(finishedEmbed(embed).toJSON())).toEqual(names(embed).filter((n) => n !== 'Sensitivities'));
+  });
+});
+
+describe('Warden HP', () => {
+  it('is three times the creature\'s HP, by name in any case', () => {
+    expect(wardenHpOf('dragon lord')).toBe(5700);
+    expect(formatWardenHp('Dragon Lord')).toBe('5,700');
+    expect(wardenHpOf('Nobody Knows Me')).toBeNull();
+  });
+
+  it('shows next to the class for a known creature only, also once the report is over', () => {
+    const fieldsOf = (name: string, expired = false) =>
+      (buildSpawnMessage(spawnFixture({ monster: { id: 1, name, category: 'Dragon' } }), { expired }).embeds![0] as { toJSON(): any }).toJSON().fields;
+
+    expect(fieldsOf('Dragon Lord').slice(0, 2)).toEqual([
+      { name: 'Class', value: 'Dragon', inline: true },
+      { name: 'HP', value: '5,700', inline: true },
+    ]);
+    expect(fieldsOf('Dragon Lord', true)).toContainEqual({ name: 'HP', value: '5,700', inline: true });
+    expect(fieldsOf('Dragon Warden').map((f: { name: string }) => f.name)).not.toContain('HP');
   });
 });

@@ -14,7 +14,7 @@ import {
 } from 'discord.js';
 import type { CharacterRef } from './api.js';
 import type { WardenSpawned } from './events.js';
-import { formatSensitivities } from './sensitivities.js';
+import { formatSensitivities, formatWardenHp } from './monsterStats.js';
 
 /**
  * Creature GIF on Tibiopedia. Discord's proxy shows Fandom's GIFs as still WebP frames, Tibiopedia's animate.
@@ -160,6 +160,12 @@ export interface SpawnMessageOptions {
   onMyWay?: boolean;
 }
 
+/** The Warden's HP (three times the creature's), next to its class; none for a creature not in the data. */
+function hpField(monsterName: string): { name: string; value: string; inline: true }[] {
+  const hp = formatWardenHp(monsterName);
+  return hp ? [{ name: 'HP', value: hp, inline: true }] : [];
+}
+
 /**
  * The alert posted in #wardens-<world> and sent as DM. Uses Discord's native
  * <t:unix:R> timestamp so the countdown updates client-side.
@@ -173,6 +179,7 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
     .setColor(expired ? 0x6b7280 : 0xf59e0b)
     .addFields(
       { name: 'Class', value: escapeMarkdown(spawn.monster.category), inline: true },
+      ...hpField(spawn.monster.name),
       {
         name: expired ? 'Expired' : 'Disappears',
         value: expired ? time(expiresAt, TimestampStyles.ShortTime) : `${time(expiresAt, TimestampStyles.RelativeTime)} (${time(expiresAt, TimestampStyles.ShortTime)})`,

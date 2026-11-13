@@ -1,6 +1,6 @@
-import { SENSITIVITY_DATA } from './sensitivityData.js';
+import { MONSTER_DATA } from './monsterData.js';
 
-/** Elements in the order of Tibia's in-game bestiary, and of each row in SENSITIVITY_DATA. */
+/** Elements in the order of Tibia's in-game bestiary, and of each creature's damage row in MONSTER_DATA. */
 export const ELEMENTS = ['physical', 'earth', 'fire', 'death', 'energy', 'holy', 'ice'] as const;
 export type Element = (typeof ELEMENTS)[number];
 
@@ -21,11 +21,25 @@ export const ELEMENT_EMOJI_NAMES: Record<Element, string> = {
 /** Shown instead of an emoji the bot cannot see: the emoji's name, e.g. `:physical:`. */
 const fallbackLabel = (element: Element): string => `:${ELEMENT_EMOJI_NAMES[element]}:`;
 
-const byName = new Map(Object.entries(SENSITIVITY_DATA).map(([name, values]) => [name.toLowerCase(), values]));
+/** An Echo Warden has three times the HP of the creature it spawns as. */
+export const WARDEN_HP_MULTIPLIER = 3;
+
+const byName = new Map(Object.entries(MONSTER_DATA).map(([name, stats]) => [name.toLowerCase(), stats]));
+
+/** HP of the creature as an Echo Warden; null when it is not in the data. */
+export function wardenHpOf(monsterName: string): number | null {
+  const stats = byName.get(monsterName.toLowerCase());
+  return stats ? stats.hp * WARDEN_HP_MULTIPLIER : null;
+}
+
+/** The alert's HP field, e.g. `5,700`. */
+export function formatWardenHp(monsterName: string): string | null {
+  return wardenHpOf(monsterName)?.toLocaleString('en-US') ?? null;
+}
 
 /** Damage the creature takes from each element, in percent; null when it is not in the data. */
 export function sensitivitiesOf(monsterName: string): Record<Element, number> | null {
-  const values = byName.get(monsterName.toLowerCase());
+  const values = byName.get(monsterName.toLowerCase())?.damage;
   if (!values) {
     return null;
   }

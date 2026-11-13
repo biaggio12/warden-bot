@@ -1,7 +1,7 @@
 import { sentryEnabled } from './instrument.js';
 import * as Sentry from '@sentry/node';
 import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
-import { ELEMENTS, ELEMENT_EMOJI_NAMES, setElementEmojis } from './sensitivities.js';
+import { ELEMENTS, ELEMENT_EMOJI_NAMES, setElementEmojis } from './monsterStats.js';
 import { AlertChannels } from './alertChannels.js';
 import { AlertPresence } from './alertPresence.js';
 import { ApiClient } from './api.js';
