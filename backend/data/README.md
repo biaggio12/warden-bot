@@ -13,6 +13,10 @@ Creatures that cannot be an Echo Warden (event, quest and arena creatures such a
 Midnight Panther) are left out, following the "Ward" column of
 [tibiopedia.pl/monsters/mine](https://tibiopedia.pl/monsters/mine).
 
-Giant Rat, Greedcarrier Rat and the three Omega creatures (update 15.40) had no bestiary class or
-level on TibiaWiki yet when they were added; their class and difficulty come from tibiopedia.pl
-(difficulty from its charm points). Re-check them against TibiaWiki once their infoboxes are filled in.
+The twelve creatures from update 15.40 (Giant Rat, Greedcarrier Rat, Hoarder Rat, Greed Elemental,
+Greater Greed, Greedweaver and the six Omega creatures) had no bestiary level on TibiaWiki yet when
+they were added; their difficulty comes from tibiopedia.pl (from its charm points). Re-check them
+against TibiaWiki once their infoboxes are filled in.
+
+Migration `Version20261113120000` inserts these twelve into existing databases, so they appear on deploy
+without running `app:bestiary:sync`.
