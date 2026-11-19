@@ -14,6 +14,7 @@ use App\Repository\WardenSpawnRepository;
 use App\Message\WardenDeletedEvent;
 use App\Security\AdminPolicy;
 use App\Service\ReporterStats;
+use App\Service\PlayerNames;
 use App\Service\UserDirectory;
 use App\Service\WorldRegistry;
 use Doctrine\ORM\EntityManagerInterface;
@@ -54,6 +55,7 @@ final class AdminController extends AbstractController
         private readonly EntityManagerInterface $em,
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
+        private readonly PlayerNames $names,
     ) {
     }
 
@@ -135,7 +137,7 @@ final class AdminController extends AbstractController
         $details = \sprintf('%s on %s, %s UTC', $spawn->getMonster()->getName(), $spawn->getServerName(), $spawn->getCreatedAt()->setTimezone(new \DateTimeZone('UTC'))->format('j M H:i'));
 
         $this->em->remove($spawn);
-        $this->em->persist(new AdminAction($admin, $reporter, 'delete_report', $details, $this->clock->now()));
+        $this->em->persist(new AdminAction($admin, $reporter, 'delete_report', $details, $this->clock->now(), playerName: null === $reporter ? null : $this->names->one($reporter), adminName: $this->names->one($admin)));
         $this->em->flush();
         $bus->dispatch($event);
         $this->logger->info('Admin {admin}: deleted report {spawn} ({details}).', ['admin' => $admin->getDisplayName(), 'spawn' => $event->spawnId, 'details' => $details]);
@@ -215,7 +217,7 @@ final class AdminController extends AbstractController
         }
 
         $label = $player->getDisplayName();
-        $this->em->persist(new AdminAction($admin, $player, 'delete', null, $this->clock->now()));
+        $this->em->persist(new AdminAction($admin, $player, 'delete', null, $this->clock->now(), playerName: $this->names->one($player), adminName: $this->names->one($admin)));
         $this->em->flush();
         // In SQL, so the database cascades do the rest (characters, bestiary, tokens; reports keep no reporter).
         $this->em->getConnection()->delete('users', ['id' => $id]);
@@ -281,7 +283,9 @@ final class AdminController extends AbstractController
         if (($problem = $change($player)) instanceof JsonResponse) {
             return $problem;
         }
-        $this->em->persist(new AdminAction($admin, $player, $what, $this->details, $this->clock->now()));
+        // Saved first, so the name reads from the account as it now is (e.g. with the character just added).
+        $this->em->flush();
+        $this->em->persist(new AdminAction($admin, $player, $what, $this->details, $this->clock->now(), playerName: $this->names->one($player), adminName: $this->names->one($admin)));
         $this->em->flush();
         $this->logger->info('Admin {admin}: {what} on {player}.', ['admin' => $admin->getDisplayName(), 'player' => $player->getDisplayName(), 'what' => $what]);
 

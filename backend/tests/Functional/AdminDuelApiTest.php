@@ -71,23 +71,32 @@ final class AdminDuelApiTest extends ApiTestCase
         $presence = new WardenSpawnPresence($spawn, '123456789012', new \DateTimeImmutable());
         $presence->replace([self::FEEDER], [], new \DateTimeImmutable());
         $this->em->persist($presence);
-        // Closed with [Dead], but a duplicate of the report above: does not count.
+        // Closed with [Dead] by someone outside the duel, but a duplicate of the report above: does not count.
+        $witness = $this->createUser('witness@example.com', '200000000000000003');
+        $witness->linkDiscord('200000000000000003', 'Witness');
         $dup = new WardenSpawn($spawn->getMonster(), 'Monza', 'Elsewhere', $farmer, 8, new \DateTimeImmutable('-54 minutes'));
-        $dup->markKilled();
+        $dup->markKilled($witness, new \DateTimeImmutable('-50 minutes'));
         $this->em->persist($dup);
+        // [Dead] clicked by the reporter himself: counts, but nobody else saw it.
+        $own = new WardenSpawn($this->createMonster('Hydra', 'Reptiles', 15), 'Monza', 'Lair', $farmer, 8, new \DateTimeImmutable('-48 minutes'));
+        $own->markKilled($farmer, new \DateTimeImmutable('-47 minutes'));
+        $this->em->persist($own);
         $this->em->flush();
 
         $data = $this->requestJson('GET', \sprintf('/api/v1/admin/duels/%s', $duel->getId()), token: $this->tokenFor($this->moderator()));
 
         self::assertResponseIsSuccessful();
         self::assertSame($duel->getId()->toRfc4122(), $data['duel']['id']);
-        [$first, $second] = $data['reports'];
+        [$first, $second, $third] = $data['reports'];
         self::assertSame([['type' => 'omw', 'user_id' => $feeder->getId(), 'name' => 'Feeder']], $first['confirmations']);
-        self::assertTrue($first['confirmed_by_opponent_only']);
+        self::assertTrue($first['confirmed_only_by_duel_players']);
         self::assertSame([true, false, 6], [$first['counted'], $first['duplicate'], $first['points']]);
-        self::assertSame('dead', $second['confirmations'][0]['type']);
-        self::assertFalse($second['confirmed_by_opponent_only']);
+        self::assertSame([['type' => 'dead', 'user_id' => $witness->getId(), 'name' => 'Witness']], $second['confirmations']);
+        self::assertFalse($second['confirmed_only_by_duel_players']);
         self::assertSame([false, true, 0], [$second['counted'], $second['duplicate'], $second['points']]);
+        self::assertSame([['type' => 'dead', 'user_id' => $farmer->getId(), 'name' => 'Farmer']], $third['confirmations']);
+        self::assertTrue($third['confirmed_only_by_duel_players']);
+        self::assertSame([true, 3], [$third['counted'], $third['points']]);
     }
 
     public function testPlayersCannotSeeIt(): void

@@ -144,7 +144,7 @@ function DuelList({ duels }: { duels: AdminDuel[] }) {
 }
 
 function confirmationText(c: DuelReport['confirmations'][number]): string {
-  if (c.type === 'dead') return 'Dead clicked';
+  if (c.type === 'dead') return c.name ? `Dead by ${c.name}` : 'Dead clicked';
   return c.type === 'omw' ? `OMW by ${c.name}` : `killed by ${c.name}`;
 }
 
@@ -173,7 +173,7 @@ function DuelReports({ duelId }: { duelId: string }) {
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            {r.confirmed_by_opponent_only && <span className="border-2 border-hp px-1.5 text-xs text-hp">only the opponent confirmed</span>}
+            {r.confirmed_only_by_duel_players && <span className="border-2 border-hp px-1.5 text-xs text-hp">only the duel's players confirmed</span>}
             {r.duplicate && <span className="border-2 border-rule px-1.5 text-xs text-muted">duplicate</span>}
             <span className={`tabular-nums ${r.counted ? 'font-semibold' : 'text-muted'}`}>{r.counted ? `+${r.points}` : '0'}</span>
           </span>

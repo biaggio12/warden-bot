@@ -228,6 +228,11 @@ final class DuelApiTest extends ApiTestCase
         $this->requestJson('POST', \sprintf('/api/v1/warden-spawns/%s/kill', $spawn->getId()), null, self::BOT_TOKEN, $this->asBot(self::ME));
         self::assertResponseIsSuccessful();
 
+        // Who clicked [Dead] is kept, for the staff's duel review.
+        $killedBy = static::getContainer()->get(\Doctrine\DBAL\Connection::class)->fetchAssociative('SELECT killed_by_user_id, killed_at FROM warden_spawns WHERE id = :id', ['id' => $spawn->getId()->toRfc4122()]);
+        self::assertSame($me->getId(), (int) $killedBy['killed_by_user_id']);
+        self::assertNotNull($killedBy['killed_at']);
+
         $data = $this->requestJson('GET', \sprintf('/api/v1/duels/%s', $duel->getId()), token: $this->tokenFor($me));
         self::assertSame('finished', $data['status']);
         self::assertSame('challenger', $data['result']);

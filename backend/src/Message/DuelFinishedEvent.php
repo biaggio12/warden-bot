@@ -3,7 +3,6 @@
 namespace App\Message;
 
 use App\Entity\Duel;
-use App\Service\StatsService;
 
 /**
  * Published when a duel's scores are in; the bot posts the result where the challenge was.
@@ -28,7 +27,10 @@ final readonly class DuelFinishedEvent
     ) {
     }
 
-    public static function fromDuel(Duel $duel): self
+    /**
+     * @param array<int, string> $names user id => name (PlayerNames)
+     */
+    public static function fromDuel(Duel $duel, array $names): self
     {
         $challenger = $duel->getChallenger();
         $opponent = $duel->getOpponent();
@@ -39,10 +41,10 @@ final readonly class DuelFinishedEvent
             minutes: $duel->getDurationMinutes(),
             stake: $duel->getStake(),
             challengerDiscordUserId: $challenger->getDiscordUserId(),
-            challengerName: StatsService::publicName($challenger->getDiscordUsername(), $challenger->getEmail()),
+            challengerName: $names[(int) $challenger->getId()] ?? 'Player #'.$challenger->getId(),
             challengerScore: (int) $duel->getChallengerScore(),
             opponentDiscordUserId: $opponent->getDiscordUserId(),
-            opponentName: StatsService::publicName($opponent->getDiscordUsername(), $opponent->getEmail()),
+            opponentName: $names[(int) $opponent->getId()] ?? 'Player #'.$opponent->getId(),
             opponentScore: (int) $duel->getOpponentScore(),
             result: null === $winner ? 'draw' : ($winner === $challenger ? 'challenger' : 'opponent'),
             discordChannelId: $duel->getDiscordChannelId(),

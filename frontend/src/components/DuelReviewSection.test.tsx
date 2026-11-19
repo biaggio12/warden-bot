@@ -49,7 +49,7 @@ describe('DuelReviewSection', () => {
           status: 'expired',
           created_at: '2026-11-19T20:05:00Z',
           confirmations: [{ type: 'omw', user_id: 2, name: 'Feeder' }],
-          confirmed_by_opponent_only: true,
+          confirmed_only_by_duel_players: true,
           duplicate: false,
           counted: true,
           points: 6,
@@ -83,7 +83,7 @@ describe('DuelReviewSection', () => {
     expect(endpoints.admin.duelDetails).toHaveBeenCalledWith('d1');
     expect(reports).toHaveTextContent('Farmer: Dragon on Monza');
     expect(reports).toHaveTextContent('OMW by Feeder');
-    expect(within(reports).getByText('only the opponent confirmed')).toBeInTheDocument();
+    expect(within(reports).getByText("only the duel's players confirmed")).toBeInTheDocument();
     expect(reports).toHaveTextContent('+6');
   });
 });

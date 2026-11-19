@@ -204,7 +204,7 @@ final class WardenSpawnController extends AbstractController
             return Problem::response(409, 'This report is no longer active.');
         }
 
-        $spawn->markKilled();
+        $spawn->markKilled($user, $this->clock->now());
         $em->flush();
 
         $bus->dispatch(WardenKilledEvent::fromSpawn($spawn, $user));

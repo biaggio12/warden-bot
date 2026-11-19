@@ -41,7 +41,7 @@ final class StatsApiTest extends ApiTestCase
         self::assertSame([['label' => 'Venore', 'count' => 3], ['label' => 'Thais', 'count' => 1]], $week['top_cities']);
         self::assertSame([
             ['rank' => 1, 'player' => 'Rival', 'reports' => 3, 'is_you' => false],
-            ['rank' => 2, 'player' => 'me…', 'reports' => 2, 'is_you' => true],
+            ['rank' => 2, 'player' => 'My Knight', 'reports' => 2, 'is_you' => true],
         ], $week['leaderboard']);
         self::assertSame(2, $week['you']['rank']);
         self::assertSame(2, $week['you']['reports_all_time']);
@@ -50,7 +50,7 @@ final class StatsApiTest extends ApiTestCase
         $all = $this->requestJson('GET', '/api/v1/stats?period=all', token: $this->tokenFor($me));
         self::assertSame(6, $all['totals']['reports']);
         self::assertCount(90, $all['reports_per_day']);
-        self::assertSame('qu…', $all['leaderboard'][2]['player'], 'e-mail addresses are never shown in full');
+        self::assertSame('Player #'.$quiet->getId(), $all['leaderboard'][2]['player'], 'never the e-mail: Discord name, else characters, else the account number');
     }
 
     public function testRanksCharactersByBestiaryProgress(): void

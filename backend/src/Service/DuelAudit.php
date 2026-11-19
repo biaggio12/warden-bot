@@ -26,6 +26,7 @@ final readonly class DuelAudit
         private Connection $db,
         private ReportScoring $scoring,
         private ClockInterface $clock,
+        private PlayerNames $names,
     ) {
     }
 
@@ -35,13 +36,14 @@ final readonly class DuelAudit
     public function overview(): array
     {
         $rows = $this->db->fetchAllAssociative(
-            'SELECT d.*, ca.email AS c_email, ca.discord_username AS c_discord, oa.email AS o_email, oa.discord_username AS o_discord
-             FROM duels d JOIN users ca ON ca.id = d.challenger_id JOIN users oa ON oa.id = d.opponent_id
+            'SELECT d.* FROM duels d
              ORDER BY d.created_at DESC, d.id DESC LIMIT '.self::RECENT,
         );
 
+        $names = $this->names->of(array_merge(array_column($rows, 'challenger_id'), array_column($rows, 'opponent_id')));
+
         return [
-            'duels' => array_map(self::duel(...), $rows),
+            'duels' => array_map(static fn (array $row): array => self::duel($row, $names), $rows),
             'pairs' => $this->pairs(),
         ];
     }
@@ -55,25 +57,24 @@ final readonly class DuelAudit
     public function details(string $duelId): ?array
     {
         $row = $this->db->fetchAssociative(
-            'SELECT d.*, ca.email AS c_email, ca.discord_username AS c_discord, oa.email AS o_email, oa.discord_username AS o_discord
-             FROM duels d JOIN users ca ON ca.id = d.challenger_id JOIN users oa ON oa.id = d.opponent_id
-             WHERE d.id = :id',
+            'SELECT d.* FROM duels d WHERE d.id = :id',
             ['id' => $duelId],
         );
         if (false === $row) {
             return null;
         }
+        $players = [(int) $row['challenger_id'], (int) $row['opponent_id']];
+        $playerNames = $this->names->of($players);
         if (null === $row['starts_at']) {
-            return ['duel' => self::duel($row), 'reports' => []];
+            return ['duel' => self::duel($row, $playerNames), 'reports' => []];
         }
 
         $from = new \DateTimeImmutable($row['starts_at']);
         $until = new \DateTimeImmutable($row['ends_at']);
-        $players = [(int) $row['challenger_id'], (int) $row['opponent_id']];
         $counted = array_flip($this->scoring->countedSpawnIds($from, $until, $players));
 
         $spawns = $this->db->fetchAllAssociative(
-            "SELECT s.id, s.reported_by_user_id, s.monster_id, s.server_name, s.status, s.created_at, s.expires_at,
+            "SELECT s.id, s.reported_by_user_id, s.monster_id, s.server_name, s.status, s.created_at, s.expires_at, s.killed_by_user_id,
                     m.name AS monster, m.charm_points, u.discord_user_id AS reporter_discord_id,
                     EXISTS (
                         SELECT 1 FROM warden_spawns e
@@ -88,26 +89,23 @@ final readonly class DuelAudit
             ['players' => ArrayParameterType::INTEGER],
         );
 
-        $names = [(int) $row['challenger_id'] => self::name($row['c_discord'], $row['c_email'], (int) $row['challenger_id']),
-            (int) $row['opponent_id'] => self::name($row['o_discord'], $row['o_email'], (int) $row['opponent_id'])];
-
         return [
-            'duel' => self::duel($row),
-            'reports' => array_map(function (array $spawn) use ($counted, $names, $players): array {
+            'duel' => self::duel($row, $playerNames),
+            'reports' => array_map(function (array $spawn) use ($counted, $playerNames, $players): array {
                 $confirmations = $this->confirmations($spawn);
 
                 return [
                     'id' => $spawn['id'],
-                    'reporter' => ['id' => (int) $spawn['reported_by_user_id'], 'name' => $names[(int) $spawn['reported_by_user_id']]],
+                    'reporter' => ['id' => (int) $spawn['reported_by_user_id'], 'name' => $playerNames[(int) $spawn['reported_by_user_id']]],
                     'monster' => $spawn['monster'],
                     'server_name' => $spawn['server_name'],
                     'status' => strtolower($spawn['status']),
                     'created_at' => Json::date(new \DateTimeImmutable($spawn['created_at'])),
                     'confirmations' => $confirmations,
-                    // Confirmed only by the other player of the duel: worth a closer look.
-                    'confirmed_by_opponent_only' => [] !== $confirmations && [] === array_filter(
+                    // Confirmed only by the two players of the duel (no one else saw the Warden): worth a closer look.
+                    'confirmed_only_by_duel_players' => [] !== $confirmations && [] === array_filter(
                         $confirmations,
-                        static fn (array $c): bool => 'dead' === $c['type'] || !\in_array($c['user_id'], $players, true),
+                        static fn (array $c): bool => !\in_array($c['user_id'], $players, true),
                     ),
                     'duplicate' => (bool) $spawn['duplicate'],
                     'counted' => isset($counted[$spawn['id']]),
@@ -127,33 +125,41 @@ final readonly class DuelAudit
      */
     private function confirmations(array $spawn): array
     {
-        $confirmations = 'KILLED' === $spawn['status'] ? [['type' => 'dead', 'user_id' => null, 'name' => null]] : [];
+        $confirmations = [];
+        if ('KILLED' === $spawn['status']) {
+            // Reports closed before the clicker was recorded have no name.
+            $killer = null === $spawn['killed_by_user_id'] ? null : (int) $spawn['killed_by_user_id'];
+            $confirmations[] = ['type' => 'dead', 'user_id' => $killer, 'name' => null === $killer ? null : $this->names->of([$killer])[$killer]];
+        }
 
         $omw = $this->db->fetchAllAssociative(
-            'SELECT DISTINCT u.id, u.email, u.discord_username, omw.discord_user_id
+            'SELECT DISTINCT u.id, omw.discord_user_id
              FROM warden_spawn_presence p
              CROSS JOIN LATERAL json_array_elements_text(p.on_my_way) AS omw(discord_user_id)
              LEFT JOIN users u ON u.discord_user_id = omw.discord_user_id
              WHERE p.spawn_id = :spawn AND omw.discord_user_id IS DISTINCT FROM :reporter',
             ['spawn' => $spawn['id'], 'reporter' => $spawn['reporter_discord_id']],
         );
+        $known = $this->names->of(array_filter(array_merge(array_column($omw, 'id'), [])));
         foreach ($omw as $r) {
             $confirmations[] = [
                 'type' => 'omw',
                 'user_id' => null === $r['id'] ? null : (int) $r['id'],
-                'name' => null === $r['id'] ? 'Discord '.$r['discord_user_id'] : self::name($r['discord_username'], $r['email'], (int) $r['id']),
+                // A Discord account not linked to the website: only its Discord id is known.
+                'name' => null === $r['id'] ? 'Discord user '.$r['discord_user_id'] : $known[(int) $r['id']],
             ];
         }
 
         $kills = $this->db->fetchAllAssociative(
-            "SELECT DISTINCT u.id, u.email, u.discord_username
-             FROM character_killed_monsters k JOIN characters c ON c.id = k.character_id JOIN users u ON u.id = c.user_id
+            "SELECT DISTINCT c.user_id AS id, c.name AS character_name
+             FROM character_killed_monsters k JOIN characters c ON c.id = k.character_id
              WHERE k.monster_id = :monster AND LOWER(c.server_name) = LOWER(:server) AND c.user_id <> :reporter
                AND k.killed_at >= :created AND k.killed_at <= CAST(:expires AS timestamp) + interval '5 minutes'",
             ['monster' => $spawn['monster_id'], 'server' => $spawn['server_name'], 'reporter' => $spawn['reported_by_user_id'], 'created' => $spawn['created_at'], 'expires' => $spawn['expires_at']],
         );
         foreach ($kills as $r) {
-            $confirmations[] = ['type' => 'kill', 'user_id' => (int) $r['id'], 'name' => self::name($r['discord_username'], $r['email'], (int) $r['id'])];
+            // The character that killed it says the most here.
+            $confirmations[] = ['type' => 'kill', 'user_id' => (int) $r['id'], 'name' => (string) $r['character_name']];
         }
 
         return $confirmations;
@@ -190,7 +196,7 @@ final readonly class DuelAudit
         if ([] === $rows) {
             return [];
         }
-        $names = $this->names(array_merge(array_column($rows, 'a_id'), array_column($rows, 'b_id')));
+        $names = $this->names->of(array_merge(array_column($rows, 'a_id'), array_column($rows, 'b_id')));
 
         $pairs = array_map(static function (array $r) use ($names): array {
             $duels = (int) $r['duels'];
@@ -220,36 +226,12 @@ final readonly class DuelAudit
     }
 
     /**
-     * @param list<int|string> $ids
-     *
-     * @return array<int, string>
-     */
-    private function names(array $ids): array
-    {
-        $names = [];
-        foreach ($this->db->fetchAllAssociative(
-            'SELECT id, email, discord_username FROM users WHERE id IN (:ids)',
-            ['ids' => array_map('intval', array_unique($ids))],
-            ['ids' => ArrayParameterType::INTEGER],
-        ) as $r) {
-            $names[(int) $r['id']] = self::name($r['discord_username'], $r['email'], (int) $r['id']);
-        }
-
-        return $names;
-    }
-
-    /** Staff see who an account is: the Discord name, else the e-mail. */
-    private static function name(?string $discord, ?string $email, int $id): string
-    {
-        return $discord ?: ($email ?: 'account #'.$id);
-    }
-
-    /**
-     * @param array<string, mixed> $r a duels row joined with both players
+     * @param array<string, mixed> $r     a duels row
+     * @param array<int, string>   $names user id => name
      *
      * @return array<string, mixed>
      */
-    private static function duel(array $r): array
+    private static function duel(array $r, array $names): array
     {
         $date = static fn (?string $value): ?string => null === $value ? null : Json::date(new \DateTimeImmutable($value));
         $finished = 'FINISHED' === $r['status'];
@@ -264,8 +246,8 @@ final readonly class DuelAudit
             'created_at' => $date($r['created_at']),
             'starts_at' => $date($r['starts_at']),
             'ends_at' => $date($r['ends_at']),
-            'challenger' => ['id' => (int) $r['challenger_id'], 'name' => self::name($r['c_discord'], $r['c_email'], (int) $r['challenger_id']), 'score' => $cs],
-            'opponent' => ['id' => (int) $r['opponent_id'], 'name' => self::name($r['o_discord'], $r['o_email'], (int) $r['opponent_id']), 'score' => $os],
+            'challenger' => ['id' => (int) $r['challenger_id'], 'name' => $names[(int) $r['challenger_id']], 'score' => $cs],
+            'opponent' => ['id' => (int) $r['opponent_id'], 'name' => $names[(int) $r['opponent_id']], 'score' => $os],
             'result' => !$finished ? null : ($cs === $os ? 'draw' : ($cs > $os ? 'challenger' : 'opponent')),
         ];
     }

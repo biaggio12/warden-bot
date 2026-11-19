@@ -35,9 +35,12 @@ class AdminAction
         private \DateTimeImmutable $createdAt,
         /** What the action was done to when it is not an account (e.g. a Discord server). */
         ?string $target = null,
+        /** How the page names the player (PlayerNames): never the e-mail. */
+        ?string $playerName = null,
+        ?string $adminName = null,
     ) {
-        $this->adminName = $admin->getDisplayName();
-        $this->playerName = mb_substr($target ?? $player?->getDisplayName() ?? 'deleted account', 0, 180);
+        $this->adminName = mb_substr($adminName ?? $admin->getDiscordUsername() ?? 'Player #'.$admin->getId(), 0, 180);
+        $this->playerName = mb_substr($target ?? $playerName ?? (null === $player ? 'deleted account' : ($player->getDiscordUsername() ?? 'Player #'.$player->getId())), 0, 180);
     }
 
     /** @return array{id: int|null, admin: string, player: string, action: string, details: string|null, created_at: \DateTimeImmutable} */

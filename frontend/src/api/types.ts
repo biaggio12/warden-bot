@@ -238,8 +238,8 @@ export interface DuelReport {
   status: 'active' | 'killed' | 'expired';
   created_at: string;
   confirmations: { type: 'dead' | 'omw' | 'kill'; user_id: number | null; name: string | null }[];
-  /** Confirmed only by the other player of the duel. */
-  confirmed_by_opponent_only: boolean;
+  /** Confirmed only by the two players of the duel: nobody else saw the Warden. */
+  confirmed_only_by_duel_players: boolean;
   duplicate: boolean;
   counted: boolean;
   points: number;

@@ -266,10 +266,12 @@ final class AdminApiTest extends ApiTestCase
 
         $data = $this->requestJson('GET', '/api/v1/admin/actions', null, $token);
         self::assertResponseIsSuccessful();
+        // Named as on the rest of the page, never by e-mail: Discord name, else characters, else "Player #id".
+        $adminName = 'Player #'.$admin->getId();
         self::assertSame([
-            ['admin@example.com', 'doomed@example.com', 'delete', null],
-            ['admin@example.com', 'player@example.com', 'block', null],
-            ['admin@example.com', 'player@example.com', 'add_character', 'New Knight (Monza)'],
+            [$adminName, 'Player #'.$doomed->getId(), 'delete', null],
+            [$adminName, 'New Knight', 'block', null],
+            [$adminName, 'New Knight', 'add_character', 'New Knight (Monza)'],
         ], array_map(static fn (array $a): array => [$a['admin'], $a['player'], $a['action'], $a['details']], $data['actions']));
         self::assertMatchesRegularExpression('/Z$/', $data['actions'][0]['created_at']);
 
@@ -347,7 +349,7 @@ final class AdminApiTest extends ApiTestCase
         self::assertCount(1, $sent);
         self::assertEquals(new WardenDeletedEvent($fakeId, 'Monza'), $sent[0]->getMessage());
         $history = $this->requestJson('GET', '/api/v1/admin/actions', null, $adminToken);
-        self::assertSame(['delete_report', 'player@example.com', 'Dragon Warden on Monza, 2 Nov 09:30 UTC'], [$history['actions'][0]['action'], $history['actions'][0]['player'], $history['actions'][0]['details']]);
+        self::assertSame(['delete_report', 'Player #'.$player->getId(), 'Dragon Warden on Monza, 2 Nov 09:30 UTC'], [$history['actions'][0]['action'], $history['actions'][0]['player'], $history['actions'][0]['details']]);
 
         $this->requestJson('DELETE', "/api/v1/admin/reports/$fakeId", null, $adminToken);
         self::assertResponseStatusCodeSame(404);

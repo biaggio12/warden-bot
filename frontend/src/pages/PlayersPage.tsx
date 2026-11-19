@@ -162,8 +162,12 @@ function AdminHistory({ actions }: { actions: AdminActionEntry[] }) {
   );
 }
 
-function nameOf(player: Player): string {
-  return player.email ?? player.discord_username ?? `account #${player.id}`;
+/** Same as everywhere on the site (backend PlayerNames): Discord name, else characters, never the e-mail. */
+function nameOf(player: Pick<Player, 'id' | 'discord_username' | 'characters'>): string {
+  if (player.discord_username) return player.discord_username;
+  const names = [...player.characters.map((c) => c.name)].sort((a, b) => a.localeCompare(b));
+  if (names.length > 0) return names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
+  return `Player #${player.id}`;
 }
 
 type RowProps = {
@@ -183,8 +187,8 @@ function PlayerRow({ player, isAdmin, onChange, onDeleted }: RowProps) {
     <li className={`border-t-2 border-rule first:border-t-0 ${player.blocked ? 'bg-hp/5' : ''}`}>
       <div className="grid gap-x-4 gap-y-2 px-5 py-4 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_8rem_9rem]">
         <div className="min-w-0">
-          <p className="flex min-w-0 items-center gap-2 font-semibold" title={player.email ?? undefined}>
-            <span className="truncate">{player.email ?? <span className="text-muted">No e-mail</span>}</span>
+          <p className="flex min-w-0 items-center gap-2 font-semibold">
+            <span className="truncate">{nameOf(player)}</span>
             {player.is_admin && <span className="shrink-0 border-2 border-accent px-1.5 text-xs text-accent-text">Admin</span>}
             {player.is_moderator && <span className="shrink-0 border-2 border-ink-2 px-1.5 text-xs text-ink-2">Moderator</span>}
             {player.blocked && <span className="shrink-0 border-2 border-hp px-1.5 text-xs text-hp">Blocked</span>}
@@ -522,9 +526,15 @@ function ManagePanel({ id, player, isAdmin, onChange, onDeleted }: RowProps & { 
               </button>
             )}
             {isAdmin && player.email && (
-              <button type="button" className="btn" disabled={busy} onClick={resetPassword}>
-                Reset password
-              </button>
+              <>
+                {/* The login, needed to pass on a new password; shown only here, to admins. */}
+                <p className="text-sm text-muted">
+                  Logs in with <span className="text-ink-2 select-all">{player.email}</span>
+                </p>
+                <button type="button" className="btn" disabled={busy} onClick={resetPassword}>
+                  Reset password
+                </button>
+              </>
             )}
             {newPassword && (
               <div className="space-y-1.5 border-3 border-accent p-3 text-sm" role="status">

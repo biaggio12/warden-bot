@@ -9,6 +9,7 @@ use App\Message\DuelFinishedEvent;
 use App\Message\ResolveDuels;
 use App\Repository\DuelRepository;
 use App\Service\DuelView;
+use App\Service\PlayerNames;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
@@ -26,6 +27,7 @@ final readonly class ResolveDuelsHandler
         private MessageBusInterface $bus,
         private ClockInterface $clock,
         private LoggerInterface $logger,
+        private PlayerNames $names,
     ) {
     }
 
@@ -70,7 +72,7 @@ final readonly class ResolveDuelsHandler
             });
             if ($done) {
                 ++$finished;
-                $this->bus->dispatch(DuelFinishedEvent::fromDuel($duel));
+                $this->bus->dispatch(DuelFinishedEvent::fromDuel($duel, $this->names->of([(int) $duel->getChallenger()->getId(), (int) $duel->getOpponent()->getId()])));
                 $this->logger->info('Duel {id} finished {a}:{b}.', [
                     'id' => $duel->getId()->toRfc4122(),
                     'a' => $duel->getChallengerScore(),

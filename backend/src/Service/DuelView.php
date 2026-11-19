@@ -17,6 +17,7 @@ final readonly class DuelView
     public function __construct(
         private ReportScoring $scoring,
         private ClockInterface $clock,
+        private PlayerNames $names,
     ) {
     }
 
@@ -27,6 +28,7 @@ final readonly class DuelView
     {
         [$challengerScore, $opponentScore] = $this->scores($duel);
         $winner = $duel->getWinner();
+        $names = $this->names->of([(int) $duel->getChallenger()->getId(), (int) $duel->getOpponent()->getId()]);
 
         return [
             'id' => $duel->getId()->toRfc4122(),
@@ -38,8 +40,8 @@ final readonly class DuelView
             'starts_at' => null === $duel->getStartsAt() ? null : Json::date($duel->getStartsAt()),
             'ends_at' => null === $duel->getEndsAt() ? null : Json::date($duel->getEndsAt()),
             'scored_at' => null === $duel->getScoredAt() ? null : Json::date($duel->getScoredAt()),
-            'challenger' => self::player($duel->getChallenger(), $challengerScore, $viewer),
-            'opponent' => self::player($duel->getOpponent(), $opponentScore, $viewer),
+            'challenger' => self::player($duel->getChallenger(), $names[(int) $duel->getChallenger()->getId()], $challengerScore, $viewer),
+            'opponent' => self::player($duel->getOpponent(), $names[(int) $duel->getOpponent()->getId()], $opponentScore, $viewer),
             'result' => match (true) {
                 DuelStatus::Finished !== $duel->getStatus() => null,
                 null === $winner => 'draw',
@@ -89,10 +91,10 @@ final readonly class DuelView
     /**
      * @return array{name: string, discord_user_id: ?string, score: ?int, is_you: bool}
      */
-    private static function player(User $user, ?int $score, ?User $viewer): array
+    private static function player(User $user, string $name, ?int $score, ?User $viewer): array
     {
         return [
-            'name' => StatsService::publicName($user->getDiscordUsername(), $user->getEmail()),
+            'name' => $name,
             'discord_user_id' => $user->getDiscordUserId(),
             'score' => $score,
             'is_you' => null !== $viewer && $viewer->getId() === $user->getId(),

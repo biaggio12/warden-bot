@@ -46,7 +46,9 @@ describe('PlayersPage', () => {
     renderPage();
 
     expect(await screen.findByText('2 accounts, newest first.')).toBeInTheDocument();
-    expect(screen.getByText('lukasz@example.com')).toBeInTheDocument();
+    // Named by Discord or characters, never by e-mail (no Discord, no characters: the account number).
+    expect(screen.getByText('Player #2')).toBeInTheDocument();
+    expect(screen.queryByText(/lukasz@example\.com/)).not.toBeInTheDocument();
     expect(screen.getByText('Discord not linked')).toBeInTheDocument();
     expect(screen.getByText('Discord Rival')).toBeInTheDocument();
     expect(screen.getByText('Old Druid (Secura)')).toBeInTheDocument();
@@ -57,11 +59,11 @@ describe('PlayersPage', () => {
   it('filters by e-mail, Discord name or character', async () => {
     vi.mocked(endpoints.players).mockResolvedValue(players);
     renderPage();
-    await screen.findByText('lukasz@example.com');
+    await screen.findByText('Player #2');
 
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search players' }), 'druid');
 
-    expect(screen.queryByText('lukasz@example.com')).not.toBeInTheDocument();
+    expect(screen.queryByText('Player #2')).not.toBeInTheDocument();
     expect(screen.getByText('Discord Rival')).toBeInTheDocument();
   });
 
@@ -105,7 +107,7 @@ describe('PlayersPage', () => {
 
     expect(endpoints.admin.deleteUser).toHaveBeenCalledWith(2);
     expect(await screen.findByText('1 account, newest first.')).toBeInTheDocument();
-    expect(screen.queryByText('lukasz@example.com')).not.toBeInTheDocument();
+    expect(screen.queryByText('Player #2')).not.toBeInTheDocument();
   });
 
   it('adds a character to another player', async () => {
@@ -115,7 +117,7 @@ describe('PlayersPage', () => {
     renderPage();
 
     await user.click((await screen.findAllByRole('button', { name: 'Manage' }))[0]!);
-    const characters = screen.getByRole('region', { name: 'Characters of lukasz@example.com' });
+    const characters = screen.getByRole('region', { name: 'Characters of Player #2' });
     await user.type(within(characters).getByRole('textbox', { name: 'Character name' }), 'New Knight');
     await user.selectOptions(await within(characters).findByRole('combobox', { name: 'World' }), 'Monza');
     await user.click(within(characters).getByRole('button', { name: 'Add' }));
@@ -142,21 +144,31 @@ describe('PlayersPage', () => {
   it('shows the admin history', async () => {
     vi.mocked(endpoints.players).mockResolvedValue(players);
     vi.mocked(endpoints.admin.actions).mockResolvedValue([
-      { id: 2, admin: 'Rival', player: 'spam@example.com', action: 'block', details: null, created_at: '2026-11-02T09:00:00Z' },
-      { id: 1, admin: 'Rival', player: 'lukasz@example.com', action: 'add_character', details: 'New Knight (Monza)', created_at: '2026-11-02T08:00:00Z' },
+      { id: 2, admin: 'Rival', player: 'Spammer', action: 'block', details: null, created_at: '2026-11-02T09:00:00Z' },
+      { id: 1, admin: 'Rival', player: 'New Knight', action: 'add_character', details: 'New Knight (Monza)', created_at: '2026-11-02T08:00:00Z' },
     ]);
     renderPage();
 
     const history = await screen.findByRole('region', { name: 'Admin history' });
     const items = within(history).getAllByRole('listitem');
-    expect(items[0]).toHaveTextContent('Rival blocked spam@example.com');
-    expect(items[1]).toHaveTextContent('Rival added a character to lukasz@example.com: New Knight (Monza)');
+    expect(items[0]).toHaveTextContent('Rival blocked Spammer');
+    expect(items[1]).toHaveTextContent('Rival added a character to New Knight: New Knight (Monza)');
+  });
+
+  it('shows the login e-mail only to admins, in Manage', async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.players).mockResolvedValue(players);
+    renderPage();
+
+    await user.click((await screen.findAllByRole('button', { name: 'Manage' }))[0]!);
+
+    expect(screen.getByRole('region', { name: 'Account of Player #2' })).toHaveTextContent('Logs in with lukasz@example.com');
   });
 
   it('sorts by the number of reports', async () => {
     vi.mocked(endpoints.players).mockResolvedValue(players);
     renderPage();
-    await screen.findByText('lukasz@example.com');
+    await screen.findByText('Player #2');
 
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort players' }), 'reports');
 
@@ -203,7 +215,7 @@ describe('PlayersPage', () => {
 
     await userEvent.click((await screen.findAllByRole('button', { name: 'Reports' }))[0]!);
 
-    expect(await screen.findByText('lukasz@example.com has not reported any Warden yet.')).toBeInTheDocument();
+    expect(await screen.findByText('Player #2 has not reported any Warden yet.')).toBeInTheDocument();
   });
 
   it('deletes a report after confirming and refreshes the counts', async () => {
