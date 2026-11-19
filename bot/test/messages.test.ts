@@ -48,7 +48,8 @@ describe('buildSpawnMessage', () => {
     expect(embed.fields.map((f: { name: string }) => f.name)).toEqual(['Class', 'Disappears', 'Reported by', 'Location']);
     expect(fields).toContain('Venore — Lair \\\\*-2\\\\*'); // city + markdown-escaped location
     expect(fields).not.toContain('Additional info');
-    expect(fields).toContain(`<t:${unixSeconds('2026-10-29T12:07:00Z')}:R>`);
+    // Only the time: a relative countdown would read "x minutes ago" once it passed.
+    expect(embed.fields.find((f: { name: string }) => f.name === 'Disappears').value).toBe(`<t:${unixSeconds('2026-10-29T12:07:00Z')}:t>`);
     expect(button).toMatchObject({ type: ComponentType.Button, label: 'Hit / Completed ✅', style: ButtonStyle.Success });
     expect(button.disabled).toBeFalsy();
     expect(parseKillCustomId(button.custom_id)).toEqual({

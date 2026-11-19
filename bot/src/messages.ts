@@ -169,8 +169,8 @@ function hpField(monsterName: string): { name: string; value: string; inline: tr
 }
 
 /**
- * The alert posted in #wardens-<world> and sent as DM. Uses Discord's native
- * <t:unix:R> timestamp so the countdown updates client-side.
+ * The alert posted in #wardens-<world> and sent as DM. Times use Discord's native <t:unix:t>
+ * timestamp, so each reader sees them in their own time zone.
  */
 export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOptions = {}): BaseMessageOptions {
   const expiresAt = new Date(spawn.expires_at);
@@ -184,7 +184,8 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
       ...hpField(spawn.monster.name),
       {
         name: expired ? 'Expired' : 'Disappears',
-        value: expired ? time(expiresAt, TimestampStyles.ShortTime) : `${time(expiresAt, TimestampStyles.RelativeTime)} (${time(expiresAt, TimestampStyles.ShortTime)})`,
+        // Only the time: a relative "in 8 minutes" would turn into "8 minutes ago" once it passed.
+        value: time(expiresAt, TimestampStyles.ShortTime),
         inline: true,
       },
       { name: 'Reported by', value: reporterOf(spawn), inline: true },
