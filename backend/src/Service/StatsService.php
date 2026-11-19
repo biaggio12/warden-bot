@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Entity\User;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Psr\Clock\ClockInterface;
 
@@ -21,7 +22,6 @@ final readonly class StatsService
         private Connection $db,
         private ClockInterface $clock,
         private ReportScoring $scoring,
-        private PlayerNames $names,
     ) {
     }
 
@@ -141,18 +141,17 @@ final readonly class StatsService
     private function leaderboard(string $since): array
     {
         $rows = $this->db->fetchAllAssociative(
-            'SELECT u.id AS user_id, COUNT(*) AS reports,
+            'SELECT u.id AS user_id, u.email, u.discord_username, COUNT(*) AS reports,
                     RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
              FROM warden_spawns s JOIN users u ON u.id = s.reported_by_user_id
              WHERE s.created_at >= :since
              GROUP BY u.id ORDER BY reports DESC, u.id ASC',
             ['since' => $since],
         );
-        $names = $this->names->of(array_column($rows, 'user_id'));
 
         return array_map(static fn (array $r) => [
             'user_id' => (int) $r['user_id'],
-            'player' => $names[(int) $r['user_id']],
+            'player' => self::publicName($r['discord_username'], $r['email']),
             'reports' => (int) $r['reports'],
             'rank' => (int) $r['rank'],
         ], $rows);
@@ -169,9 +168,32 @@ final readonly class StatsService
         if ([] === $ranking) {
             return [];
         }
-        $names = $this->names->of(array_column($ranking, 'user_id'));
+        $names = [];
+        foreach ($this->db->fetchAllAssociative(
+            'SELECT id, email, discord_username FROM users WHERE id IN (:ids)',
+            ['ids' => array_column($ranking, 'user_id')],
+            ['ids' => ArrayParameterType::INTEGER],
+        ) as $row) {
+            $names[(int) $row['id']] = self::publicName($row['discord_username'], $row['email']);
+        }
 
-        return array_map(static fn (array $row) => $row + ['player' => $names[$row['user_id']]], $ranking);
+        return array_map(static fn (array $row) => $row + ['player' => $names[$row['user_id']] ?? 'Player'], $ranking);
+    }
+
+    /**
+     * Name shown to other players: the Discord name, otherwise only the start of the
+     * e-mail's local part - full addresses are never exposed in the leaderboard.
+     */
+    public static function publicName(?string $discordUsername, ?string $email): string
+    {
+        if (null !== $discordUsername && '' !== $discordUsername) {
+            return $discordUsername;
+        }
+        if (null === $email || '' === $email) {
+            return 'Player';
+        }
+
+        return mb_substr(strstr($email, '@', true) ?: $email, 0, 2).'…';
     }
 
     /**
