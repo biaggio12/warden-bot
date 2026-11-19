@@ -5,6 +5,7 @@ import {
   EmbedBuilder,
   InteractionContextType,
   MessageFlags,
+  PermissionFlagsBits,
   SlashCommandBuilder,
   TimestampStyles,
   escapeMarkdown,
@@ -295,6 +296,15 @@ export class DuelCommands {
       return;
     }
 
+    const missing = missingChannelPermissions(interaction);
+    if (missing.length > 0) {
+      await interaction.editReply(
+        `⚠️ I cannot post the duel's result in this channel (missing: ${missing.join(', ')}). ` +
+          'Use /duel in a channel where the bot can write, e.g. your #wardens- channel.',
+      );
+      return;
+    }
+
     const opponent = interaction.options.getUser('opponent', true);
     if (opponent.bot) {
       await interaction.editReply('⚠️ Bots do not report Wardens. Pick a player.');
@@ -322,23 +332,52 @@ export class DuelCommands {
     await interaction.editReply(pointsMessage(await this.api.getPoints(interaction.user.id, period)));
   }
 
-  async handleButton(interaction: ButtonInteraction, target: { action: 'accept' | 'decline'; duelId: string }): Promise<void> {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    if (target.action === 'accept') {
-      const duel = await this.api.acceptDuel(interaction.user.id, target.duelId);
-      await interaction.message.edit(activeMessage(duel));
-      await interaction.editReply(`⚔️ Duel accepted! It ends ${time(new Date(duel.ends_at!), TimestampStyles.RelativeTime)}. Good hunting.`);
-      return;
+  /**
+   * The challenge is edited through the click itself (deferUpdate + editReply): that works in any
+   * channel, even one the bot cannot see. An error goes to the clicker only, the challenge stays.
+   */
+  async handleButton(
+    interaction: ButtonInteraction,
+    target: { action: 'accept' | 'decline'; duelId: string },
+    describeError: (error: unknown) => string,
+  ): Promise<void> {
+    await interaction.deferUpdate();
+    try {
+      if (target.action === 'accept') {
+        const duel = await this.api.acceptDuel(interaction.user.id, target.duelId);
+        await interaction.editReply(activeMessage(duel));
+        await interaction.followUp({
+          content: `⚔️ Duel accepted! It ends ${time(new Date(duel.ends_at!), TimestampStyles.RelativeTime)}. Good hunting.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const duel = await this.api.declineDuel(interaction.user.id, target.duelId);
+      const how = duel.challenger.is_you ? 'cancelled' : 'declined';
+      await interaction.editReply(closedMessage(duel, how));
+      await interaction.followUp({ content: how === 'cancelled' ? 'Challenge taken back.' : 'Duel declined.', flags: MessageFlags.Ephemeral });
+    } catch (error) {
+      console.error('[duel] Button failed:', error);
+      await interaction.followUp({ content: describeError(error), flags: MessageFlags.Ephemeral }).catch(() => undefined);
     }
-    const duel = await this.api.declineDuel(interaction.user.id, target.duelId);
-    const how = duel.challenger.is_you ? 'cancelled' : 'declined';
-    await interaction.message.edit(closedMessage(duel, how));
-    await interaction.editReply(how === 'cancelled' ? 'Challenge taken back.' : 'Duel declined.');
   }
 
   private async editChallenge(client: Client, duel: Duel, message: BaseMessageOptions): Promise<void> {
     await editDuelMessage(client, duel.discord_channel_id, duel.discord_message_id, message);
   }
+}
+
+/** What the bot needs in the channel to post the challenge's result there later. */
+export function missingChannelPermissions(interaction: Pick<ChatInputCommandInteraction, 'appPermissions' | 'channel'>): string[] {
+  const permissions = interaction.appPermissions;
+  if (!permissions) return [];
+  const needed: [bigint, string][] = [
+    [PermissionFlagsBits.ViewChannel, 'View Channel'],
+    [interaction.channel?.isThread() ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages, 'Send Messages'],
+    [PermissionFlagsBits.EmbedLinks, 'Embed Links'],
+    [PermissionFlagsBits.ReadMessageHistory, 'Read Message History'],
+  ];
+  return needed.filter(([flag]) => !permissions.has(flag)).map(([, name]) => name);
 }
 
 async function editDuelMessage(client: Client, channelId: string | null, messageId: string | null, message: BaseMessageOptions): Promise<boolean> {
@@ -363,14 +402,21 @@ export class DuelAnnouncer {
     await editDuelMessage(this.client, duel.discord_channel_id, duel.discord_message_id, result).catch((error) =>
       console.warn('[duel] Could not update the challenge message:', (error as Error).message),
     );
-    if (!duel.discord_channel_id) return;
-    const channel = await this.client.channels.fetch(duel.discord_channel_id).catch(() => null);
+    const ping = [duel.challenger.discord_user_id, duel.opponent.discord_user_id].filter((id): id is string => !!id);
+    const channel = duel.discord_channel_id ? await this.client.channels.fetch(duel.discord_channel_id).catch(() => null) : null;
     if (!channel?.isSendable()) {
-      console.warn(`[duel] Cannot post the result of ${duel.duel_id}: channel ${duel.discord_channel_id} is gone or not writable`);
+      // The bot cannot see the channel (anymore): the players get the result in a DM instead.
+      console.warn(`[duel] Channel ${duel.discord_channel_id} of ${duel.duel_id} is gone or not writable: sending the result by DM`);
+      await Promise.all(
+        ping.map((id) =>
+          this.client!.users.fetch(id)
+            .then((user) => user.send({ ...result, allowedMentions: mentions() }))
+            .catch((error) => console.warn(`[duel] Could not DM the result to ${id}:`, (error as Error).message)),
+        ),
+      );
       return;
     }
     // A new message pings both players; the edited challenge alone would not notify them.
-    const ping = [duel.challenger.discord_user_id, duel.opponent.discord_user_id].filter((id): id is string => !!id);
     await channel.send({
       ...result,
       content: ping.map((id) => `<@${id}>`).join(' '),

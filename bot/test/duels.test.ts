@@ -1,4 +1,4 @@
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../src/api.js';
 import {
@@ -8,6 +8,7 @@ import {
   closedMessage,
   duelButtonId,
   finishedMessage,
+  missingChannelPermissions,
   parseDuelButtonId,
   pointsMessage,
   statusMessage,
@@ -233,7 +234,8 @@ describe('duel buttons', () => {
     return {
       customId,
       user: { id: userId },
-      message: { edit: vi.fn().mockResolvedValue(undefined) },
+      // A message in a channel the bot cannot see: editing it directly fails.
+      message: { edit: vi.fn().mockRejectedValue(new Error('ChannelNotCached')) },
       deferred: false,
       replied: false,
       isAutocomplete: () => false,
@@ -241,25 +243,40 @@ describe('duel buttons', () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isRepliable: () => true,
-      deferReply: vi.fn(async function (this: { deferred: boolean }) {
+      deferUpdate: vi.fn(async function (this: { deferred: boolean }) {
         this.deferred = true;
       }),
+      deferReply: vi.fn(),
       editReply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
       reply: vi.fn().mockResolvedValue(undefined),
     };
   }
 
-  it('[Accept] starts the duel and updates the challenge', async () => {
+  it('[Accept] starts the duel and updates the challenge through the click', async () => {
     const accepted = duel({ status: 'active', starts_at: '2026-11-19T20:01:00Z', ends_at: '2026-11-19T20:31:00Z' });
     const api = { acceptDuel: vi.fn().mockResolvedValue(accepted) } as unknown as ApiClient;
     const i = button(duelButtonId('accept', DUEL_ID), RIVAL);
 
     await new InteractionHandler(api, {} as MonsterCatalog, 'http://panel').handle(i as never);
 
-    expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    expect(i.deferUpdate).toHaveBeenCalledOnce();
     expect(api.acceptDuel).toHaveBeenCalledWith(RIVAL, DUEL_ID);
-    expect(i.message.edit).toHaveBeenCalledWith(activeMessage(accepted));
-    expect(i.editReply.mock.calls[0]![0]).toContain('Duel accepted');
+    expect(i.message.edit).not.toHaveBeenCalled();
+    expect(i.editReply).toHaveBeenCalledWith(activeMessage(accepted));
+    expect(i.followUp.mock.calls[0]![0]).toMatchObject({ flags: MessageFlags.Ephemeral });
+    expect(i.followUp.mock.calls[0]![0].content).toContain('Duel accepted');
+  });
+
+  it('[Decline] calls the duel off on the challenge', async () => {
+    const declined = duel({ status: 'declined', challenger: { name: 'Me', discord_user_id: ME, score: null, is_you: false } });
+    const api = { declineDuel: vi.fn().mockResolvedValue(declined) } as unknown as ApiClient;
+    const i = button(duelButtonId('decline', DUEL_ID), RIVAL);
+
+    await new InteractionHandler(api, {} as MonsterCatalog, 'http://panel').handle(i as never);
+
+    expect(i.editReply).toHaveBeenCalledWith(closedMessage(declined, 'declined'));
+    expect(i.followUp.mock.calls[0]![0]).toEqual({ content: 'Duel declined.', flags: MessageFlags.Ephemeral });
   });
 
   it('an error goes to the clicker only, the challenge stays', async () => {
@@ -272,7 +289,66 @@ describe('duel buttons', () => {
 
     await new InteractionHandler(api, {} as MonsterCatalog, 'http://panel').handle(i as never);
 
-    expect(i.message.edit).not.toHaveBeenCalled();
-    expect(i.editReply).toHaveBeenCalledWith({ content: '⚠️ Only the challenged player can accept this duel.', components: [] });
+    expect(i.editReply).not.toHaveBeenCalled();
+    expect(i.followUp).toHaveBeenCalledWith({ content: '⚠️ Only the challenged player can accept this duel.', flags: MessageFlags.Ephemeral });
+  });
+});
+
+describe('channel the bot cannot write in', () => {
+  it('lists what the bot is missing there', () => {
+    const permissions = (granted: bigint[]) => ({ has: (flag: bigint) => granted.includes(flag) });
+    const channel = { isThread: () => false };
+    expect(missingChannelPermissions({ appPermissions: permissions([]), channel } as never)).toEqual([
+      'View Channel',
+      'Send Messages',
+      'Embed Links',
+      'Read Message History',
+    ]);
+    const all = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory];
+    expect(missingChannelPermissions({ appPermissions: permissions(all), channel } as never)).toEqual([]);
+  });
+
+  it('/duel challenge there is refused before any duel is created', async () => {
+    const api = { createDuel: vi.fn() } as unknown as ApiClient;
+    const i = {
+      commandName: 'duel',
+      channelId: '33333333333',
+      channel: { isThread: () => false },
+      appPermissions: { has: (flag: bigint) => flag !== PermissionFlagsBits.ViewChannel },
+      user: { id: ME },
+      options: { getSubcommand: () => 'challenge' },
+      deferred: false,
+      replied: false,
+      isAutocomplete: () => false,
+      isChatInputCommand: () => true,
+      isButton: () => false,
+      isStringSelectMenu: () => false,
+      isRepliable: () => true,
+      deferReply: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
+      reply: vi.fn(),
+    };
+
+    await new InteractionHandler(api, {} as MonsterCatalog, 'http://panel').handle(i as never);
+
+    expect(api.createDuel).not.toHaveBeenCalled();
+    expect(i.followUp).not.toHaveBeenCalled();
+    expect(i.editReply.mock.calls[0]![0]).toContain('missing: View Channel');
+  });
+
+  it('the result goes to both players by DM', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      channels: { fetch: vi.fn().mockRejectedValue(new Error('Missing Access')) },
+      users: { fetch: vi.fn().mockResolvedValue({ send }) },
+    };
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await new DuelAnnouncer(client as never).onFinished(finished);
+
+    expect(client.users.fetch.mock.calls.map(([id]) => id)).toEqual([ME, RIVAL]);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[0]![0].embeds[0].toJSON().title).toBe('🏆 Me wins the duel!');
   });
 });

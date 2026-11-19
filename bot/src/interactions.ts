@@ -95,7 +95,7 @@ export class InteractionHandler {
       } else if (interaction.isChatInputCommand() && interaction.commandName === 'points') {
         await this.duels.executePoints(interaction);
       } else if (interaction.isButton() && parseDuelButtonId(interaction.customId)) {
-        await this.duels.handleButton(interaction, parseDuelButtonId(interaction.customId)!);
+        await this.duels.handleButton(interaction, parseDuelButtonId(interaction.customId)!, (error) => this.errorMessage(error));
       } else if (interaction.isButton() && parseCheckCustomId(interaction.customId)) {
         await this.handleCheck(interaction, parseCheckCustomId(interaction.customId)!);
       } else if (interaction.isButton() && parseGoneCustomId(interaction.customId)) {
