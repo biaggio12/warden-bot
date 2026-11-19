@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (PHPUnit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      database:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: warden
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d warden"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # .env points at the Compose host "database"; in CI Postgres listens on localhost.
+      DATABASE_URL: postgresql://app:app@127.0.0.1:5432/warden?serverVersion=17&charset=utf8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, amqp, intl, zip, apcu
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-
+
+      - run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Prepare test database
+        run: |
+          php bin/console --env=test doctrine:database:create --if-not-exists --no-interaction
+          php bin/console --env=test doctrine:migrations:migrate --no-interaction
+
+      - name: Validate Doctrine mapping
+        run: php bin/console --env=test doctrine:schema:validate
+
+      - run: bin/phpunit
+
+  node:
+    name: ${{ matrix.app }} (typecheck, test, build)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [bot, frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  docker:
+    name: Production images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production images
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml build
