@@ -10,7 +10,7 @@ vi.mock('../api/endpoints', () => ({
   endpoints: {
     players: vi.fn(),
     worlds: vi.fn(),
-    admin: { block: vi.fn(), unblock: vi.fn(), unlinkDiscord: vi.fn(), deleteUser: vi.fn(), addCharacter: vi.fn(), deleteCharacter: vi.fn(), resetPassword: vi.fn(), reports: vi.fn(), deleteReport: vi.fn(), grantModerator: vi.fn(), revokeModerator: vi.fn(), actions: vi.fn(), alertChannels: vi.fn(), setAlertChannel: vi.fn(), resetAlertChannel: vi.fn() },
+    admin: { block: vi.fn(), unblock: vi.fn(), unlinkDiscord: vi.fn(), deleteUser: vi.fn(), addCharacter: vi.fn(), deleteCharacter: vi.fn(), resetPassword: vi.fn(), reports: vi.fn(), deleteReport: vi.fn(), grantModerator: vi.fn(), revokeModerator: vi.fn(), actions: vi.fn(), alertChannels: vi.fn(), setAlertChannel: vi.fn(), resetAlertChannel: vi.fn(), duels: vi.fn(), duelDetails: vi.fn() },
   },
 }));
 
@@ -37,6 +37,7 @@ describe('PlayersPage', () => {
     vi.clearAllMocks();
     vi.mocked(endpoints.worlds).mockResolvedValue(['Monza', 'Secura']);
     vi.mocked(endpoints.admin.actions).mockResolvedValue([]);
+    vi.mocked(endpoints.admin.duels).mockResolvedValue({ duels: [], pairs: [] });
     vi.mocked(endpoints.admin.alertChannels).mockResolvedValue({ enabled: true, prefix: 'wardens-', worlds: ['Monza'], servers: [], assignments: [] });
   });
 

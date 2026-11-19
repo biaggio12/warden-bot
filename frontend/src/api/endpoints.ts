@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AdminActionEntry, HistoryPage, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
+import type { AdminActionEntry, AdminDuel, DuelPair, DuelReport, HistoryPage, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
 
 export const endpoints = {
   login: (email: string, password: string) => api<AuthResponse>('POST', '/auth/login', { email, password }),
@@ -27,6 +27,8 @@ export const endpoints = {
     /** Answers with the reporter's updated row (null when their account is gone). */
     deleteReport: (spawnId: string) => api<{ user: Player | null }>('DELETE', `/admin/reports/${spawnId}`),
     actions: () => api<{ actions: AdminActionEntry[] }>('GET', '/admin/actions').then((r) => r.actions),
+    duels: () => api<{ duels: AdminDuel[]; pairs: DuelPair[] }>('GET', '/admin/duels'),
+    duelDetails: (id: string) => api<{ duel: AdminDuel; reports: DuelReport[] }>('GET', `/admin/duels/${id}`),
     /** Admins only. `refresh` reads the channels from Discord again. */
     alertChannels: (refresh = false) => api<AlertChannelSettings>('GET', `/admin/alert-channels${refresh ? '?refresh=1' : ''}`),
     setAlertChannel: (guildId: string, serverName: string, channelId: string) =>

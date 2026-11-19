@@ -50,6 +50,44 @@ final readonly class ReportScoring
      */
     public function pointsBetween(\DateTimeImmutable $from, \DateTimeImmutable $until, ?array $userIds = null): array
     {
+        $rows = $this->counted(
+            'SELECT s.reported_by_user_id AS user_id, SUM('.self::pointsSql('m.charm_points').') AS points',
+            'GROUP BY s.reported_by_user_id',
+            $from,
+            $until,
+            $userIds,
+        );
+
+        $points = [];
+        foreach ($rows as $row) {
+            $points[(int) $row['user_id']] = (int) $row['points'];
+        }
+
+        return $points;
+    }
+
+    /**
+     * Ids of the reports in [$from, $until) that count (see the class doc), for the admins'
+     * duel review: the same rules as the points.
+     *
+     * @param list<int>|null $userIds
+     *
+     * @return list<string>
+     */
+    public function countedSpawnIds(\DateTimeImmutable $from, \DateTimeImmutable $until, ?array $userIds = null): array
+    {
+        return array_map(static fn (array $row): string => (string) $row['id'], $this->counted('SELECT s.id', '', $from, $until, $userIds));
+    }
+
+    /**
+     * The counted reports of [$from, $until) (only of `$userIds` when given), as `$select` ... `$tail`.
+     *
+     * @param list<int>|null $userIds
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function counted(string $select, string $tail, \DateTimeImmutable $from, \DateTimeImmutable $until, ?array $userIds): array
+    {
         if ([] === $userIds) {
             return [];
         }
@@ -67,8 +105,8 @@ final readonly class ReportScoring
             $types['users'] = ArrayParameterType::INTEGER;
         }
 
-        $rows = $this->db->fetchAllAssociative(
-            "SELECT s.reported_by_user_id AS user_id, SUM(".self::pointsSql('m.charm_points').") AS points
+        return $this->db->fetchAllAssociative(
+            "$select
              FROM warden_spawns s
              JOIN users u ON u.id = s.reported_by_user_id
              JOIN monsters m ON m.id = s.monster_id
@@ -99,17 +137,11 @@ final readonly class ReportScoring
                      AND e.created_at > s.created_at - make_interval(mins => CAST(:dup AS int))
                      AND (e.created_at < s.created_at OR (e.created_at = s.created_at AND e.id < s.id))
                )
-             GROUP BY s.reported_by_user_id",
+             $tail",
             $params,
             $types,
         );
 
-        $points = [];
-        foreach ($rows as $row) {
-            $points[(int) $row['user_id']] = (int) $row['points'];
-        }
-
-        return $points;
     }
 
     /**

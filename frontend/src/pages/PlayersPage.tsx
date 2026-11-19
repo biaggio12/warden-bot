@@ -3,6 +3,7 @@ import { endpoints } from '../api/endpoints';
 import type { AdminActionEntry, Player, PlayerReports } from '../api/types';
 import AlertChannelsSection from '../components/AlertChannelsSection';
 import BotMaintenanceSection from '../components/BotMaintenanceSection';
+import DuelReviewSection from '../components/DuelReviewSection';
 import AddCharacterForm from '../components/AddCharacterForm';
 import { ChevronIcon, TrashIcon } from '../components/Icons';
 import MonsterImage from '../components/MonsterImage';
@@ -106,6 +107,8 @@ export default function PlayersPage({ isAdmin = false }: { isAdmin?: boolean }) 
       {isAdmin && <AlertChannelsSection onChange={history.reload} />}
 
       {isAdmin && <BotMaintenanceSection onPosted={history.reload} />}
+
+      <DuelReviewSection />
 
       {history.data && <AdminHistory actions={history.data} />}
     </>
