@@ -83,7 +83,7 @@ export interface PointsSummary {
 const PERIOD_LABELS: Record<PointsPeriod, string> = { '7d': 'last 7 days', '30d': 'last 30 days', all: 'all time' };
 
 /** Points for a counted report by the Warden's bestiary difficulty; mirrors the backend's ReportScoring. */
-export const DIFFICULTY_POINTS = { Harmless: 1, Trivial: 2, Easy: 3, Medium: 4, Hard: 6, Challenging: 10 } as const;
+export const DIFFICULTY_POINTS = { Harmless: 1, Trivial: 2, Easy: 3, Medium: 4, Hard: 10, Challenging: 25 } as const;
 
 const SCORING_RULES =
   'A report counts once it is confirmed (💀 Dead clicked, or another player clicks 🏃 OMW or marks it killed) ' +

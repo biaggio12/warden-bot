@@ -95,8 +95,8 @@ final class ResolveDuelsHandlerTest extends KernelTestCase
 
         self::assertSame(['expired' => 1, 'finished' => 2], $result);
         self::assertSame(DuelStatus::Finished, $finished->getStatus());
-        // Alice: Dragon (Hard, 6) + Hydra (Easy, 3); Bob: Dragon (6).
-        self::assertSame([9, 6], [$finished->getChallengerScore(), $finished->getOpponentScore()]);
+        // Alice: Dragon (Hard, 10) + Hydra (Easy, 3); Bob: Dragon (10).
+        self::assertSame([13, 10], [$finished->getChallengerScore(), $finished->getOpponentScore()]);
         self::assertSame($alice, $finished->getWinner());
         self::assertSame(DuelStatus::Active, $recent->getStatus());
         self::assertSame(DuelStatus::Finished, $quick->getStatus());
@@ -109,13 +109,13 @@ final class ResolveDuelsHandlerTest extends KernelTestCase
         self::assertCount(3, $messages);
         $finishedEvent = array_values(array_filter($messages, static fn ($m) => $m instanceof DuelFinishedEvent && 5 === $m->stake))[0];
         self::assertSame('challenger', $finishedEvent->result);
-        self::assertSame([9, 6], [$finishedEvent->challengerScore, $finishedEvent->opponentScore]);
+        self::assertSame([13, 10], [$finishedEvent->challengerScore, $finishedEvent->opponentScore]);
         self::assertCount(1, array_filter($messages, static fn ($m) => $m instanceof DuelExpiredEvent));
 
-        // Played for 5 points: Alice takes them from Bob. All-time report points: Alice 9; Bob 6 + two Easy Hydras outside the duel = 12.
+        // Played for 5 points: Alice takes them from Bob. All-time report points: Alice 13; Bob 10 + two Easy Hydras outside the duel = 16.
         $scoring = static::getContainer()->get(ReportScoring::class);
-        self::assertSame(14, $scoring->balanceOf((int) $alice->getId(), new \DateTimeImmutable()));
-        self::assertSame(7, $scoring->balanceOf((int) $bob->getId(), new \DateTimeImmutable()));
+        self::assertSame(18, $scoring->balanceOf((int) $alice->getId(), new \DateTimeImmutable()));
+        self::assertSame(11, $scoring->balanceOf((int) $bob->getId(), new \DateTimeImmutable()));
         self::assertSame(5, $finishedEvent->stake);
 
         self::assertSame(['expired' => 0, 'finished' => 0], static::getContainer()->get(ResolveDuelsHandler::class)(new ResolveDuels()), 'nothing is resolved twice');

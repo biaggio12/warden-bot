@@ -28,8 +28,8 @@ final readonly class ReportScoring
         'Trivial' => 2,
         'Easy' => 3,
         'Medium' => 4,
-        'Hard' => 6,
-        'Challenging' => 10,
+        'Hard' => 10,
+        'Challenging' => 25,
     ];
     /** A monster whose difficulty is unknown (charm points off the bestiary's scale). */
     private const DEFAULT_POINTS = 1;

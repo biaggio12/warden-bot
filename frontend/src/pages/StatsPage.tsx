@@ -100,7 +100,7 @@ export default function StatsPage() {
               `You: ${plural(data.you.points ?? 0, 'point')}${data.you.points_rank ? ` (#${data.you.points_rank})` : ''}. ` +
               'A report scores once it is confirmed (💀 Dead, or another player clicks 🏃 OMW or marks it killed) ' +
               'and nobody reported the same Warden in the 10 minutes before. Harder Wardens are worth more: ' +
-              'Harmless 1 · Trivial 2 · Easy 3 · Medium 4 · Hard 6 · Challenging 10. ' +
+              'Harmless 1 · Trivial 2 · Easy 3 · Medium 4 · Hard 10 · Challenging 25. ' +
               'Duel others with /duel on Discord, optionally for points: the winner takes the stake from the loser.'
             }
           />

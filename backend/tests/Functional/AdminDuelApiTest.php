@@ -90,7 +90,7 @@ final class AdminDuelApiTest extends ApiTestCase
         [$first, $second, $third] = $data['reports'];
         self::assertSame([['type' => 'omw', 'user_id' => $feeder->getId(), 'name' => 'Feeder']], $first['confirmations']);
         self::assertTrue($first['confirmed_only_by_duel_players']);
-        self::assertSame([true, false, 6], [$first['counted'], $first['duplicate'], $first['points']]);
+        self::assertSame([true, false, 10], [$first['counted'], $first['duplicate'], $first['points']]);
         self::assertSame([['type' => 'dead', 'user_id' => $witness->getId(), 'name' => 'Witness']], $second['confirmations']);
         self::assertFalse($second['confirmed_only_by_duel_players']);
         self::assertSame([false, true, 0], [$second['counted'], $second['duplicate'], $second['points']]);

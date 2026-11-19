@@ -51,7 +51,7 @@ final class DuelApiTest extends ApiTestCase
 
         $list = $this->requestJson('GET', '/api/v1/duels', token: $this->tokenFor($me));
         self::assertSame($duel['id'], $list['current']['id']);
-        self::assertSame(6, $list['current']['challenger']['score'], 'a Hard Warden (50 charm points) is worth 6');
+        self::assertSame(10, $list['current']['challenger']['score'], 'a Hard Warden (50 charm points) is worth 10');
         self::assertSame(['won' => 0, 'lost' => 0, 'drawn' => 0], $list['record']);
     }
 
@@ -162,14 +162,14 @@ final class DuelApiTest extends ApiTestCase
 
         $points = $this->requestJson('GET', '/api/v1/points?period=7d', token: $this->tokenFor($me));
         self::assertResponseIsSuccessful();
-        self::assertSame(6, $points['points'], 'Dragon: Hard, 6 points');
+        self::assertSame(10, $points['points'], 'Dragon: Hard, 10 points');
         self::assertSame(2, $points['rank']);
         self::assertSame(2, $points['players']);
-        self::assertSame([['rank' => 1, 'player' => 'Rival', 'points' => 10, 'is_you' => false], ['rank' => 2, 'player' => 'Me', 'points' => 6, 'is_you' => true]], $points['top'], 'Hydra: Challenging, 10 points');
+        self::assertSame([['rank' => 1, 'player' => 'Rival', 'points' => 25, 'is_you' => false], ['rank' => 2, 'player' => 'Me', 'points' => 10, 'is_you' => true]], $points['top'], 'Hydra: Challenging, 25 points');
 
         $stats = $this->requestJson('GET', '/api/v1/stats?period=7d', token: $this->tokenFor($me));
-        self::assertSame(6, $stats['you']['points']);
-        self::assertSame([10, 6], array_column($stats['points_leaderboard'], 'points'));
+        self::assertSame(10, $stats['you']['points']);
+        self::assertSame([25, 10], array_column($stats['points_leaderboard'], 'points'));
     }
 
     public function testDeadClickConfirmsTheReport(): void
@@ -194,9 +194,9 @@ final class DuelApiTest extends ApiTestCase
             $this->em->persist($spawn);
         }
         $this->em->flush();
-        // Me: 6 points, Rival: 4.
+        // Me: 10 points (Hard), Rival: 4 (Medium).
 
-        $tooMuch = $this->requestJson('POST', '/api/v1/duels', ['opponent_discord_user_id' => self::RIVAL, 'minutes' => 15, 'stake' => 7], self::BOT_TOKEN, $this->asBot(self::ME));
+        $tooMuch = $this->requestJson('POST', '/api/v1/duels', ['opponent_discord_user_id' => self::RIVAL, 'minutes' => 15, 'stake' => 11], self::BOT_TOKEN, $this->asBot(self::ME));
         self::assertResponseStatusCodeSame(422);
         self::assertSame('stake_too_high', $tooMuch['code']);
 
@@ -236,6 +236,6 @@ final class DuelApiTest extends ApiTestCase
         $data = $this->requestJson('GET', \sprintf('/api/v1/duels/%s', $duel->getId()), token: $this->tokenFor($me));
         self::assertSame('finished', $data['status']);
         self::assertSame('challenger', $data['result']);
-        self::assertSame(6, $data['challenger']['score']);
+        self::assertSame(10, $data['challenger']['score']);
     }
 }
