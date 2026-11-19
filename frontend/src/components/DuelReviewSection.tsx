@@ -24,27 +24,72 @@ const STATUS_LABELS: Record<AdminDuel['status'], string> = {
  * Staff: who challenged whom, which pairs keep meeting (and who wins the points), and for each
  * duel the reports that scored and who confirmed them, to spot points being farmed.
  */
-export default function DuelReviewSection() {
-  const data = useAsync(endpoints.admin.duels, []);
+/** yyyy-mm-dd of a local date, as <input type="date"> wants it. */
+function dayString(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/** Local midnight of a yyyy-mm-dd day, plus `days`, as an ISO date-time for the API. */
+function midnight(day: string, days = 0): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y!, m! - 1, d! + days).toISOString();
+}
+
+export default function DuelReviewSection({ players = [] }: { players?: { id: number; name: string }[] }) {
+  const today = dayString(new Date());
+  const [from, setFrom] = useState(() => dayString(new Date(Date.now() - 29 * 86_400_000)));
+  const [to, setTo] = useState(today);
+  const [userId, setUserId] = useState<number | null>(null);
+  const valid = from !== '' && to !== '' && from <= to;
+  const data = useAsync(
+    // Both days count in full: until is the midnight after `to`.
+    () => (valid ? endpoints.admin.duels({ from: midnight(from), until: midnight(to, 1), userId: userId ?? undefined }) : Promise.resolve(null)),
+    [from, to, userId, valid],
+  );
+  const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <section className="mt-10 space-y-6" aria-labelledby="duel-review">
       <div>
         <h2 id="duel-review">Duels</h2>
         <p className="mt-1 text-sm text-muted">
-          Who challenged whom. Pairs that keep meeting, or where one side always wins the stake, are flagged; open a duel to see which
-          reports scored and who confirmed them.
+          Who challenged whom, in the dates you pick (both days included). Pairs that keep meeting, or where one side always wins the
+          stake, are flagged; open a duel to see which reports scored and who confirmed them.
         </p>
       </div>
 
+      <form className="flex flex-wrap items-end gap-3" aria-label="Filter duels" onSubmit={(e) => e.preventDefault()}>
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">From</span>
+          <input type="date" className="input" value={from} max={to || today} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">To</span>
+          <input type="date" className="input" value={to} min={from} max={today} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        <label className="text-sm sm:w-64">
+          <span className="mb-1 block text-muted">Player</span>
+          <select className="input" value={userId ?? ''} onChange={(e) => setUserId(e.target.value === '' ? null : Number(e.target.value))}>
+            <option value="">Everyone</option>
+            {sortedPlayers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </form>
+
+      {!valid && <p className="text-sm text-hp">Pick a start date on or before the end date.</p>}
       {data.error && <p className="panel p-4 text-hp">{data.error.message}</p>}
       {data.loading && !data.data && <p className="text-muted">Loading duels…</p>}
 
-      {data.data && (
-        <>
+      {valid && data.data && (
+        <div className={`space-y-6 transition-opacity duration-(--dur-short) ${data.loading ? 'opacity-60' : ''}`}>
           <Pairs pairs={data.data.pairs} />
           <DuelList duels={data.data.duels} />
-        </>
+          {data.data.truncated && <p className="text-sm text-muted">Showing the newest {data.data.duels.length}; pick a shorter window to see the rest.</p>}
+        </div>
       )}
     </section>
   );
@@ -53,9 +98,9 @@ export default function DuelReviewSection() {
 function Pairs({ pairs }: { pairs: DuelPair[] }) {
   return (
     <div>
-      <h3 className="mb-2 text-base font-semibold">Pairs, last 30 days</h3>
+      <h3 className="mb-2 text-base font-semibold">Pairs</h3>
       {pairs.length === 0 ? (
-        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">No finished duels in the last 30 days.</p>
+        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">No duel finished in these dates.</p>
       ) : (
         <ul className="panel divide-y-2 divide-rule" aria-label="Duel pairs">
           {pairs.map((pair) => (
@@ -92,9 +137,9 @@ function DuelList({ duels }: { duels: AdminDuel[] }) {
 
   return (
     <div>
-      <h3 className="mb-2 text-base font-semibold">Latest duels</h3>
+      <h3 className="mb-2 text-base font-semibold">Duels, newest first</h3>
       {duels.length === 0 ? (
-        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">Nobody has challenged anyone yet.</p>
+        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">Nobody challenged anyone in these dates.</p>
       ) : (
         <ol className="panel divide-y-2 divide-rule" aria-label="Latest duels">
           {duels.map((duel) => {

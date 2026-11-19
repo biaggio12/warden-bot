@@ -8,6 +8,7 @@ use App\Security\AdminPolicy;
 use App\Service\DuelAudit;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Uid\Uuid;
@@ -25,14 +26,34 @@ final class AdminDuelController extends AbstractController
     ) {
     }
 
+    /** Longest window that can be asked for at once. */
+    private const MAX_DAYS = 366;
+
+    /**
+     * `from` and `until` are date-times (ISO 8601, the website sends the viewer's local
+     * midnights); `user_id` keeps only that player's duels.
+     */
     #[Route('', name: 'api_admin_duels', methods: ['GET'])]
-    public function list(#[CurrentUser] User $user): JsonResponse
-    {
+    public function list(
+        #[CurrentUser] User $user,
+        #[MapQueryParameter] ?string $from = null,
+        #[MapQueryParameter] ?string $until = null,
+        #[MapQueryParameter('user_id')] ?int $userId = null,
+    ): JsonResponse {
         if (!$this->admins->isStaff($user)) {
             return Problem::response(403, 'Admins and moderators only.');
         }
+        try {
+            $start = null === $from || '' === $from ? null : new \DateTimeImmutable($from);
+            $end = null === $until || '' === $until ? null : new \DateTimeImmutable($until);
+        } catch (\Exception) {
+            return Problem::response(400, 'from and until must be dates and times.');
+        }
+        if (null !== $start && null !== $end && ($start >= $end || $start < $end->modify(\sprintf('-%d days', self::MAX_DAYS)))) {
+            return Problem::response(400, \sprintf('from must be before until, at most %d days.', self::MAX_DAYS));
+        }
 
-        return $this->json($this->audit->overview());
+        return $this->json($this->audit->overview($start, $end, $userId));
     }
 
     #[Route('/{id}', name: 'api_admin_duel_details', methods: ['GET'])]

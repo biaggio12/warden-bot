@@ -27,7 +27,15 @@ export const endpoints = {
     /** Answers with the reporter's updated row (null when their account is gone). */
     deleteReport: (spawnId: string) => api<{ user: Player | null }>('DELETE', `/admin/reports/${spawnId}`),
     actions: () => api<{ actions: AdminActionEntry[] }>('GET', '/admin/actions').then((r) => r.actions),
-    duels: () => api<{ duels: AdminDuel[]; pairs: DuelPair[] }>('GET', '/admin/duels'),
+    /** `from` / `until`: ISO date-times; `userId`: only that player's duels. */
+    duels: (filter: { from?: string; until?: string; userId?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (filter.from) query.set('from', filter.from);
+      if (filter.until) query.set('until', filter.until);
+      if (filter.userId) query.set('user_id', String(filter.userId));
+      const qs = query.toString();
+      return api<{ from: string; until: string; duels: AdminDuel[]; truncated: boolean; pairs: DuelPair[] }>('GET', `/admin/duels${qs ? `?${qs}` : ''}`);
+    },
     duelDetails: (id: string) => api<{ duel: AdminDuel; reports: DuelReport[] }>('GET', `/admin/duels/${id}`),
     /** Admins only. `refresh` reads the channels from Discord again. */
     alertChannels: (refresh = false) => api<AlertChannelSettings>('GET', `/admin/alert-channels${refresh ? '?refresh=1' : ''}`),

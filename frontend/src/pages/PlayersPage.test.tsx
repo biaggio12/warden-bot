@@ -6,6 +6,9 @@ import type { Player } from '../api/types';
 import { ToastProvider } from '../components/Toast';
 import PlayersPage from './PlayersPage';
 
+// Tested on its own (DuelReviewSection.test.tsx); its player list would repeat the names here.
+vi.mock('../components/DuelReviewSection', () => ({ default: () => null }));
+
 vi.mock('../api/endpoints', () => ({
   endpoints: {
     players: vi.fn(),
@@ -37,7 +40,7 @@ describe('PlayersPage', () => {
     vi.clearAllMocks();
     vi.mocked(endpoints.worlds).mockResolvedValue(['Monza', 'Secura']);
     vi.mocked(endpoints.admin.actions).mockResolvedValue([]);
-    vi.mocked(endpoints.admin.duels).mockResolvedValue({ duels: [], pairs: [] });
+    vi.mocked(endpoints.admin.duels).mockResolvedValue({ from: '', until: '', truncated: false, duels: [], pairs: [] });
     vi.mocked(endpoints.admin.alertChannels).mockResolvedValue({ enabled: true, prefix: 'wardens-', worlds: ['Monza'], servers: [], assignments: [] });
   });
 

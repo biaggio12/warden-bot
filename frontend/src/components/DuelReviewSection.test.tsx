@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { endpoints } from '../api/endpoints';
@@ -23,6 +23,9 @@ const duel: AdminDuel = {
 describe('DuelReviewSection', () => {
   beforeEach(() => {
     vi.mocked(endpoints.admin.duels).mockResolvedValue({
+      from: '2026-10-21T00:00:00Z',
+      until: '2026-11-20T00:00:00Z',
+      truncated: false,
       duels: [duel],
       pairs: [
         {
@@ -85,5 +88,34 @@ describe('DuelReviewSection', () => {
     expect(reports).toHaveTextContent('OMW by Feeder');
     expect(within(reports).getByText("only the duel's players confirmed")).toBeInTheDocument();
     expect(reports).toHaveTextContent('+6');
+  });
+
+  it('asks for the picked dates (both days in full) and player', async () => {
+    const user = userEvent.setup();
+    render(<DuelReviewSection players={[{ id: 2, name: 'Feeder' }, { id: 1, name: 'Farmer' }]} />);
+    await screen.findByRole('list', { name: 'Duel pairs' });
+
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-19' } });
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-11-30' } });
+    expect(within(screen.getByLabelText('Player')).getAllByRole('option').map((o) => o.textContent)).toEqual(['Everyone', 'Farmer', 'Feeder']);
+    await user.selectOptions(screen.getByLabelText('Player'), 'Feeder');
+
+    expect(endpoints.admin.duels).toHaveBeenLastCalledWith({
+      from: new Date(2026, 10, 19).toISOString(),
+      until: new Date(2026, 11, 1).toISOString(),
+      userId: 2,
+    });
+  });
+
+  it('does not ask for an end before the start', async () => {
+    render(<DuelReviewSection />);
+    await screen.findByRole('list', { name: 'Duel pairs' });
+    const calls = vi.mocked(endpoints.admin.duels).mock.calls.length;
+
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-30' } });
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-11-19' } });
+
+    expect(await screen.findByText('Pick a start date on or before the end date.')).toBeInTheDocument();
+    expect(vi.mocked(endpoints.admin.duels).mock.calls.length).toBe(calls);
   });
 });

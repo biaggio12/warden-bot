@@ -104,4 +104,40 @@ final class AdminDuelApiTest extends ApiTestCase
         $this->requestJson('GET', '/api/v1/admin/duels', token: $this->tokenFor($this->createUser()));
         self::assertResponseStatusCodeSame(403);
     }
+
+    public function testFiltersByDatesAndPlayer(): void
+    {
+        $farmer = $this->createUser('farmer@example.com', self::FARMER);
+        $farmer->linkDiscord(self::FARMER, 'Farmer');
+        $feeder = $this->createUser('feeder@example.com', self::FEEDER);
+        $feeder->linkDiscord(self::FEEDER, 'Feeder');
+        $other = $this->createUser('other@example.com', '200000000000000009');
+        $other->linkDiscord('200000000000000009', 'Other');
+        // Three in four days, back in October, and one now with someone else.
+        foreach (['2026-10-10 12:00', '2026-10-12 12:00', '2026-10-14 12:00'] as $at) {
+            $this->finishedDuel($farmer, $feeder, $at, 6, 0);
+        }
+        $this->finishedDuel($other, $feeder, '-1 hour', 0, 3, stake: 0);
+        $this->em->flush();
+        $token = $this->tokenFor($this->moderator());
+
+        $october = $this->requestJson('GET', '/api/v1/admin/duels?'.http_build_query(['from' => '2026-10-01T00:00:00+02:00', 'until' => '2026-11-01T00:00:00+01:00']), token: $token);
+        self::assertResponseIsSuccessful();
+        self::assertSame('2026-09-30T22:00:00Z', $october['from']);
+        self::assertCount(3, $october['duels']);
+        self::assertSame(['repeated', 'one_sided'], $october['pairs'][0]['flags'], 'three duels within seven days, all won by one side');
+
+        // Only one of those days: the pair is no longer flagged.
+        $oneDay = $this->requestJson('GET', '/api/v1/admin/duels?'.http_build_query(['from' => '2026-10-12T00:00:00Z', 'until' => '2026-10-13T00:00:00Z']), token: $token);
+        self::assertCount(1, $oneDay['duels']);
+        self::assertSame([], $oneDay['pairs'][0]['flags']);
+
+        // The default window (last 30 days) for one player.
+        $feederNow = $this->requestJson('GET', '/api/v1/admin/duels?user_id='.$other->getId(), token: $token);
+        self::assertSame(['Other'], array_column(array_column($feederNow['duels'], 'challenger'), 'name'));
+        self::assertSame([['Feeder', 'Other']], array_map(static fn (array $p): array => [$p['a']['name'], $p['b']['name']], $feederNow['pairs']));
+
+        $this->requestJson('GET', '/api/v1/admin/duels?from=2026-11-10T00:00:00Z&until=2026-11-01T00:00:00Z', token: $token);
+        self::assertResponseStatusCodeSame(400);
+    }
 }

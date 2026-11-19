@@ -108,7 +108,7 @@ export default function PlayersPage({ isAdmin = false }: { isAdmin?: boolean }) 
 
       {isAdmin && <BotMaintenanceSection onPosted={history.reload} />}
 
-      <DuelReviewSection />
+      <DuelReviewSection players={list?.map((p) => ({ id: p.id, name: nameOf(p) })) ?? []} />
 
       {history.data && <AdminHistory actions={history.data} />}
     </>

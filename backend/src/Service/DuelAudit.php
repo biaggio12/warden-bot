@@ -15,9 +15,10 @@ use Psr\Clock\ClockInterface;
  */
 final readonly class DuelAudit
 {
-    public const RECENT = 100;
-    /** Pairs are summed up over this many days. */
-    public const PAIR_DAYS = 30;
+    /** The most duels listed for one window. */
+    public const LIMIT = 200;
+    /** Without dates: the last this many days. */
+    public const DEFAULT_DAYS = 30;
     /** The same two players this many times within REPEAT_DAYS is flagged. */
     public const REPEAT_COUNT = 3;
     public const REPEAT_DAYS = 7;
@@ -31,20 +32,35 @@ final readonly class DuelAudit
     }
 
     /**
-     * @return array{duels: list<array<string, mixed>>, pairs: list<array<string, mixed>>}
+     * Duels challenged in [$from, $until) and the pairs of the duels that ended in it, newest
+     * first; only those of `$userId` when given. Defaults: the last DEFAULT_DAYS days.
+     *
+     * @return array{from: string, until: string, duels: list<array<string, mixed>>, truncated: bool, pairs: list<array<string, mixed>>}
      */
-    public function overview(): array
+    public function overview(?\DateTimeImmutable $from = null, ?\DateTimeImmutable $until = null, ?int $userId = null): array
     {
+        $utc = new \DateTimeZone('UTC');
+        $until = ($until ?? $this->clock->now())->setTimezone($utc);
+        $from = ($from ?? $until->modify(\sprintf('-%d days', self::DEFAULT_DAYS)))->setTimezone($utc);
+        $params = ['from' => $from->format('Y-m-d H:i:s'), 'until' => $until->format('Y-m-d H:i:s'), 'user' => $userId];
+
         $rows = $this->db->fetchAllAssociative(
             'SELECT d.* FROM duels d
-             ORDER BY d.created_at DESC, d.id DESC LIMIT '.self::RECENT,
+             WHERE d.created_at >= :from AND d.created_at < :until
+               AND (CAST(:user AS INT) IS NULL OR :user IN (d.challenger_id, d.opponent_id))
+             ORDER BY d.created_at DESC, d.id DESC LIMIT '.(self::LIMIT + 1),
+            $params,
         );
-
+        $truncated = \count($rows) > self::LIMIT;
+        $rows = \array_slice($rows, 0, self::LIMIT);
         $names = $this->names->of(array_merge(array_column($rows, 'challenger_id'), array_column($rows, 'opponent_id')));
 
         return [
+            'from' => Json::date($from),
+            'until' => Json::date($until),
             'duels' => array_map(static fn (array $row): array => self::duel($row, $names), $rows),
-            'pairs' => $this->pairs(),
+            'truncated' => $truncated,
+            'pairs' => $this->pairs($params),
         ];
     }
 
@@ -166,32 +182,36 @@ final readonly class DuelAudit
     }
 
     /**
-     * Pairs that played finished duels in the last PAIR_DAYS days, flagged ones first.
+     * Pairs of the duels that ended in the window, flagged ones first.
      *
      * @return list<array<string, mixed>>
      */
-    private function pairs(): array
+    /**
+     * @param array{from: string, until: string, user: ?int} $params
+     */
+    private function pairs(array $params): array
     {
-        $now = $this->clock->now();
+        // repeated: the most duels the pair played within any REPEAT_DAYS days of the window.
         $rows = $this->db->fetchAllAssociative(
-            "SELECT LEAST(d.challenger_id, d.opponent_id) AS a_id, GREATEST(d.challenger_id, d.opponent_id) AS b_id,
-                    COUNT(*) AS duels,
-                    COUNT(*) FILTER (WHERE d.ends_at >= :repeat_since) AS recent,
-                    COUNT(*) FILTER (WHERE d.challenger_score <> d.opponent_score
-                        AND (CASE WHEN d.challenger_score > d.opponent_score THEN d.challenger_id ELSE d.opponent_id END) = LEAST(d.challenger_id, d.opponent_id)) AS a_wins,
-                    COUNT(*) FILTER (WHERE d.challenger_score <> d.opponent_score
-                        AND (CASE WHEN d.challenger_score > d.opponent_score THEN d.challenger_id ELSE d.opponent_id END) = GREATEST(d.challenger_id, d.opponent_id)) AS b_wins,
-                    SUM(CASE WHEN d.challenger_score = d.opponent_score THEN 0
-                             WHEN (CASE WHEN d.challenger_score > d.opponent_score THEN d.challenger_id ELSE d.opponent_id END) = LEAST(d.challenger_id, d.opponent_id) THEN d.stake
-                             ELSE -d.stake END) AS stakes_to_a,
-                    MAX(d.ends_at) AS last_at
-             FROM duels d
-             WHERE d.status = 'FINISHED' AND d.ends_at >= :since
-             GROUP BY 1, 2",
-            [
-                'since' => $now->modify(\sprintf('-%d days', self::PAIR_DAYS))->format('Y-m-d H:i:s'),
-                'repeat_since' => $now->modify(\sprintf('-%d days', self::REPEAT_DAYS))->format('Y-m-d H:i:s'),
-            ],
+            "WITH finished AS (
+                 SELECT d.*, LEAST(d.challenger_id, d.opponent_id) AS a_id, GREATEST(d.challenger_id, d.opponent_id) AS b_id,
+                        CASE WHEN d.challenger_score > d.opponent_score THEN d.challenger_id
+                             WHEN d.opponent_score > d.challenger_score THEN d.opponent_id END AS winner_id,
+                        COUNT(*) OVER (
+                            PARTITION BY LEAST(d.challenger_id, d.opponent_id), GREATEST(d.challenger_id, d.opponent_id)
+                            ORDER BY d.ends_at RANGE BETWEEN make_interval(days => CAST(:repeat_days AS int)) PRECEDING AND CURRENT ROW
+                        ) AS in_window
+                 FROM duels d
+                 WHERE d.status = 'FINISHED' AND d.ends_at >= :from AND d.ends_at < :until
+                   AND (CAST(:user AS INT) IS NULL OR :user IN (d.challenger_id, d.opponent_id))
+             )
+             SELECT a_id, b_id, COUNT(*) AS duels, MAX(in_window) AS recent,
+                    COUNT(*) FILTER (WHERE winner_id = a_id) AS a_wins,
+                    COUNT(*) FILTER (WHERE winner_id = b_id) AS b_wins,
+                    SUM(CASE WHEN winner_id = a_id THEN stake WHEN winner_id = b_id THEN -stake ELSE 0 END) AS stakes_to_a,
+                    MAX(ends_at) AS last_at
+             FROM finished GROUP BY a_id, b_id",
+            $params + ['repeat_days' => self::REPEAT_DAYS],
         );
         if ([] === $rows) {
             return [];
