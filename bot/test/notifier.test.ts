@@ -292,6 +292,11 @@ describe('Notifier', () => {
     expect(embed.title).toBe('💀 Dragon Warden');
     expect(embed.description).toContain('reported by <@7>');
     expect(embed.fields.map((f: { name: string }) => f.name)).toContain('On my way (2)');
+    // No "Disappears" countdown running into "x minutes ago": the kill time, and when it goes away.
+    const fields = Object.fromEntries(embed.fields.map((f: { name: string; value: string }) => [f.name, f.value]));
+    expect(fields).not.toHaveProperty('Disappears');
+    expect(fields.Killed).toMatch(/^<t:\d+:t>$/);
+    expect(fields.Removed).toMatch(/^<t:\d+:R>$/);
     // Only the bestiary link stays.
     expect(edit.components.flatMap((row: { toJSON(): any }) => row.toJSON().components).every((c: { style: number }) => c.style === ButtonStyle.Link)).toBe(true);
 
@@ -341,6 +346,11 @@ describe('Notifier', () => {
     await notifier.onKilled(killed());
     await vi.advanceTimersByTimeAsync(7 * 60_000);
 
+    // The alert stays for good: only the kill time, no countdown and no "Removed".
+    const names = (ctx.byId.get('msg-1') as any).edit.mock.calls[0]![0].embeds[0].toJSON().fields.map((f: { name: string }) => f.name);
+    expect(names).toContain('Killed');
+    expect(names).not.toContain('Disappears');
+    expect(names).not.toContain('Removed');
     expect(ctx.channelMessages.edit).not.toHaveBeenCalled();
     expect(ctx.channelMessages.delete).not.toHaveBeenCalled();
   });
