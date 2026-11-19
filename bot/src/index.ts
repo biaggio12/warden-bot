@@ -8,6 +8,7 @@ import { ApiClient } from './api.js';
 import { loadConfig, type Config } from './config.js';
 import { EventConsumer } from './consumer.js';
 import { DailySummary, summaryWindows } from './dailySummary.js';
+import { DuelAnnouncer } from './duels.js';
 import { startHealthServer } from './health.js';
 import { InteractionHandler, commands } from './interactions.js';
 import { MaintenanceCommand, buildBackOnlineMessage, buildMaintenanceMessage, noticeFromEvent } from './maintenance.js';
@@ -78,8 +79,13 @@ async function main(): Promise<void> {
     });
   }
 
+  const duels = new DuelAnnouncer(client);
   const consumer = new EventConsumer(config.amqpUrl, async (event) => {
-    if (event.event === 'warden.spawned') {
+    if (event.event === 'duel.finished') {
+      await duels.onFinished(event.data);
+    } else if (event.event === 'duel.expired') {
+      await duels.onExpired(event.data);
+    } else if (event.event === 'warden.spawned') {
       await notifier.onSpawned(event.data);
     } else if (event.event === 'warden.killed') {
       await notifier.onKilled(event.data);

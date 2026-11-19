@@ -131,6 +131,8 @@ export interface Stats {
   top_monsters: CountRow[];
   top_cities: CountRow[];
   leaderboard: { rank: number; player: string; reports: number; is_you: boolean }[];
+  /** One point per report another player confirmed ([OMW] or a kill) that is not a duplicate. */
+  points_leaderboard: { rank: number; player: string; points: number; is_you: boolean }[];
   /** Characters with the most monsters marked in the bestiary, all time. */
   bestiary_leaderboard: { rank: number; character: string; server_name: string; killed: number; total: number; is_you: boolean }[];
   you: {
@@ -138,6 +140,8 @@ export interface Stats {
     rank: number | null;
     reporters: number;
     reports_all_time: number;
+    points: number;
+    points_rank: number | null;
     characters: { name: string; server_name: string; killed: number; total: number }[];
   };
 }

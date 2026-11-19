@@ -11,7 +11,7 @@ final class BestiaryData
     public const DEFAULT_PATH = __DIR__.'/../../data/bestiary.json';
 
     /** Charm points awarded for completing a creature, by bestiary difficulty. */
-    private const CHARM_POINTS = [
+    public const CHARM_POINTS = [
         'Harmless' => 1,
         'Trivial' => 5,
         'Easy' => 15,
