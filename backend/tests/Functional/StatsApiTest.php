@@ -3,6 +3,7 @@
 namespace App\Tests\Functional;
 
 use App\Entity\CharacterKilledMonster;
+use App\Entity\Monster;
 use App\Entity\User;
 use App\Entity\WardenSpawn;
 
@@ -67,11 +68,14 @@ final class StatsApiTest extends ApiTestCase
         $this->em->persist(new CharacterKilledMonster($mine, $monsters[0]));
         $this->em->flush();
 
+        // Migrations seed some creatures (e.g. the 15.40 Echo Wardens), so the total is whatever the table holds.
+        $total = $this->em->getRepository(Monster::class)->count([]);
+
         $stats = $this->requestJson('GET', '/api/v1/stats?period=7d', token: $this->tokenFor($me));
 
         self::assertSame([
-            ['rank' => 1, 'character' => 'Rival Druid', 'server_name' => 'Secura', 'killed' => 3, 'total' => 3, 'is_you' => false],
-            ['rank' => 2, 'character' => 'My Knight', 'server_name' => 'Monza', 'killed' => 1, 'total' => 3, 'is_you' => true],
+            ['rank' => 1, 'character' => 'Rival Druid', 'server_name' => 'Secura', 'killed' => 3, 'total' => $total, 'is_you' => false],
+            ['rank' => 2, 'character' => 'My Knight', 'server_name' => 'Monza', 'killed' => 1, 'total' => $total, 'is_you' => true],
         ], $stats['bestiary_leaderboard'], 'all-time progress, whatever the period; characters with nothing marked are left out');
     }
 
