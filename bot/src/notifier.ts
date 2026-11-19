@@ -1,4 +1,4 @@
-import { ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Client, type Message, type TextChannel } from 'discord.js';
+import { ChannelType, DiscordAPIError, RESTJSONErrorCodes, type BaseMessageOptions, type Client, type Message, type TextChannel } from 'discord.js';
 import { AlertChannels } from './alertChannels.js';
 import { AlertPresence } from './alertPresence.js';
 import { buildSummaryMessage, type DailySummaryData } from './dailySummary.js';
@@ -400,6 +400,27 @@ export class Notifier {
       }
     }
     console.info(`[summary] Summary of ${heading} for ${summary.worlds.length} world(s) posted in ${posted} channel(s)`);
+  }
+
+  /**
+   * One message in every alert channel the bot can see, whatever the world (the maintenance
+   * notice). A channel that refuses it does not stop the others. Returns how many took it.
+   */
+  async broadcast(message: BaseMessageOptions, what: string): Promise<number> {
+    if (!this.client?.user) {
+      console.info(`[dry-run] ${what} in every alert channel`);
+      return 0;
+    }
+    let posted = 0;
+    for (const channel of await this.alertChannels()) {
+      try {
+        await channel.send(message);
+        posted++;
+      } catch (error) {
+        console.warn(`[${what}] Could not post in #${channel.name} (${channel.guild.name}):`, (error as Error).message);
+      }
+    }
+    return posted;
   }
 
   dispose(): void {

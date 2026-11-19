@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { endpoints } from '../api/endpoints';
 import type { AdminActionEntry, Player, PlayerReports } from '../api/types';
 import AlertChannelsSection from '../components/AlertChannelsSection';
+import BotMaintenanceSection from '../components/BotMaintenanceSection';
 import AddCharacterForm from '../components/AddCharacterForm';
 import { ChevronIcon, TrashIcon } from '../components/Icons';
 import MonsterImage from '../components/MonsterImage';
@@ -104,6 +105,8 @@ export default function PlayersPage({ isAdmin = false }: { isAdmin?: boolean }) 
 
       {isAdmin && <AlertChannelsSection onChange={history.reload} />}
 
+      {isAdmin && <BotMaintenanceSection onPosted={history.reload} />}
+
       {history.data && <AdminHistory actions={history.data} />}
     </>
   );
@@ -122,6 +125,8 @@ const ACTION_LABELS: Record<AdminActionEntry['action'], string> = {
   delete_report: 'deleted a report of',
   set_alert_channel: 'chose an alert channel on',
   reset_alert_channel: 'went back to the named alert channel on',
+  bot_maintenance: 'posted the bot maintenance notice on',
+  bot_back_online: 'posted that the bot is back on',
 };
 
 const timeFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });

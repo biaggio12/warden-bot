@@ -59,3 +59,12 @@ describe('loadConfig daily summary', () => {
     expect(() => loadConfig()).toThrow(/DISCORD_SUMMARY_TIMEZONE/);
   });
 });
+
+describe('loadConfig ADMIN_DISCORD_IDS', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('keeps the valid Discord ids', () => {
+    withEnv({ DISCORD_TOKEN: '', ADMIN_DISCORD_IDS: ' 111111111111111111, nope ,222222222222222222' });
+    expect(loadConfig().adminDiscordIds).toEqual(['111111111111111111', '222222222222222222']);
+  });
+});

@@ -140,6 +140,15 @@ oznacza Monzę), a poza takim kanałem ze świata, na którym gracz ma najwięce
 pierwszy alfabetycznie, jak w formularzu web). Zgłoszenie działa jak to z aplikacji: alert z pingami
 pojawia się na kanale.
 
+Przed wgraniem nowej wersji admin może wysłać `/maintenance start [minutes] [message]` (albo kliknąć
+„Post "bot down"” w zakładce Players → „Bot maintenance notice”): bot wrzuca na wszystkie kanały alertów,
+na wszystkich serwerach, embed „🛠️ Bot update in progress” z przybliżoną godziną powrotu i opcjonalną
+notatką. Po wdrożeniu `/maintenance end [message]` (albo „Post "bot is back"”) ogłasza „✅ Bot is back”.
+Komendy mogą użyć tylko konta z `ADMIN_DISCORD_IDS` (te same co admini strony), a Discord pokazuje ją
+tylko członkom z uprawnieniem *Administrator*. Ogłoszenie ze strony idzie przez RabbitMQ; „bot down”
+starsze niż 5 minut (bot był już wyłączony) jest pomijane, a „bot is back” wysłane, gdy bot nie działał,
+pojawia się zaraz po jego starcie.
+
 Gdy bot jest na kilku serwerach Discord, zgłoszenie z `/warden` trafia tylko na serwer, na którym użyto
 komendy. Zgłoszenie z aplikacji trafia na serwery, na których jest zgłaszający. Jeśli zgłaszający nie ma
 podpiętego Discorda, alert idzie na wszystkie serwery z kanałem `#wardens-<świat>`.

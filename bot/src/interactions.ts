@@ -31,6 +31,7 @@ import {
   type PresenceList,
   type KillTarget,
 } from './messages.js';
+import { maintenanceCommand, type MaintenanceCommand } from './maintenance.js';
 import type { MonsterCatalog } from './monsterCatalog.js';
 import { ReportCommand, UserError, reportCommand } from './reportCommand.js';
 
@@ -46,6 +47,7 @@ export const commands = [
       option.setName('code').setDescription('Code from the Warden Tracker web app (Characters tab)').setRequired(true).setMaxLength(16),
     ),
   reportCommand,
+  maintenanceCommand,
 ].map((command) => command.toJSON());
 
 /**
@@ -62,6 +64,7 @@ export class InteractionHandler {
     channelPrefix = 'wardens-',
     private readonly presence = new AlertPresence(),
     channels = new AlertChannels(async () => [], channelPrefix),
+    private readonly maintenance: MaintenanceCommand | null = null,
   ) {
     this.report = new ReportCommand(api, catalog, channelPrefix, channels);
   }
@@ -78,6 +81,10 @@ export class InteractionHandler {
         await this.handleLink(interaction);
       } else if (interaction.isChatInputCommand() && interaction.commandName === 'warden') {
         await this.report.execute(interaction);
+      } else if (interaction.isChatInputCommand() && interaction.commandName === 'maintenance') {
+        await (this.maintenance
+          ? this.maintenance.execute(interaction)
+          : interaction.reply({ content: '⚠️ This command is not available.', flags: MessageFlags.Ephemeral }));
       } else if (interaction.isButton() && parseCheckCustomId(interaction.customId)) {
         await this.handleCheck(interaction, parseCheckCustomId(interaction.customId)!);
       } else if (interaction.isButton() && parseGoneCustomId(interaction.customId)) {
