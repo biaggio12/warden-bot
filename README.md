@@ -315,6 +315,18 @@ W `.env`: `FRONTEND_URL` i `VITE_API_URL` to adres publiczny, `CORS_ALLOW_ORIGIN
 `BOT_API_TOKEN` jest losowy. Logowanie przez Discord wymaga adresu
 `https://warden.23-88-19-218.sslip.io/auth/discord/callback` w Developer Portal → OAuth2 → Redirects.
 
+### Automatyczne wdrożenie (GitHub Actions)
+
+Po każdym zielonym CI na `main` workflow `Deploy` łączy się z serwerem przez SSH, przewija checkout
+do przetestowanego commita (`git merge --ff-only`, nigdy nie nadpisuje lokalnej historii) i uruchamia
+`scripts/deploy.sh`: kopia bazy, `make public-up`, sprzątanie starych obrazów. Na koniec sprawdza
+`/api/v1/health`. Ręcznie: zakładka *Actions → Deploy → Run workflow* albo na serwerze
+`scripts/deploy.sh <sha>`.
+
+Sekrety (*Settings → Secrets and variables → Actions*): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`
+(katalog repo na serwerze), `DEPLOY_SSH_KEY` (klucz prywatny używany tylko do deployu) i
+`DEPLOY_KNOWN_HOSTS` (wynik `ssh-keyscan <host>`).
+
 ## Kopie zapasowe
 
 `scripts/backup-db.sh` (albo `make backup`) robi `pg_dump` działającej bazy do
