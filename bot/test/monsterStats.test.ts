@@ -59,7 +59,7 @@ describe('sensitivities once the report is over', () => {
 
   it('are removed from an alert retired after a restart, keeping the other fields', () => {
     const embed = live();
-    expect(names(finishedEmbed(embed).toJSON())).toEqual(names(embed).filter((n) => n !== 'Sensitivities'));
+    expect(names(finishedEmbed(embed).toJSON())).toEqual(names(embed).filter((n) => n !== 'Sensitivities').map((n) => (n === 'Disappears' ? 'Expired' : n)));
   });
 });
 
