@@ -260,9 +260,9 @@ final class AdminApiTest extends ApiTestCase
         $this->grantAdmins();
 
         $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/characters', $player->getId()), ['name' => 'New Knight', 'server_name' => 'Monza'], $token);
-        $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/block', $player->getId()), null, $token);
+        $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/block', $player->getId()), ['reason' => '  Fake reports on Monza  '], $token);
         $this->requestJson('POST', \sprintf('/api/v1/admin/users/%d/block', $admin->getId()), null, $token); // refused: not recorded
-        $this->requestJson('DELETE', \sprintf('/api/v1/admin/users/%d', $doomed->getId()), null, $token);
+        $this->requestJson('DELETE', \sprintf('/api/v1/admin/users/%d', $doomed->getId()), ['reason' => str_repeat('x', 300)], $token);
 
         $data = $this->requestJson('GET', '/api/v1/admin/actions', null, $token);
         self::assertResponseIsSuccessful();
@@ -272,6 +272,7 @@ final class AdminApiTest extends ApiTestCase
             ['admin@example.com', 'player@example.com', 'add_character', 'New Knight (Monza)'],
         ], array_map(static fn (array $a): array => [$a['admin'], $a['player'], $a['action'], $a['details']], $data['actions']));
         self::assertMatchesRegularExpression('/Z$/', $data['actions'][0]['created_at']);
+        self::assertSame([str_repeat('x', 255), 'Fake reports on Monza', null], array_column($data['actions'], 'reason'), 'trimmed, cut to 255, none when not given');
 
         $this->requestJson('GET', '/api/v1/admin/actions', null, $playerToken);
         self::assertResponseStatusCodeSame(401); // blocked
@@ -300,6 +301,7 @@ final class AdminApiTest extends ApiTestCase
         self::assertResponseIsSuccessful();
         self::assertSame([3, 1, 2], [$data['total'], $data['last_7_days'], $data['last_30_days']]);
         self::assertSame(['active' => 0, 'killed' => 1, 'expired' => 2], $data['by_status']); // past their time, even before the expiry job ran
+        self::assertSame([2, false], [$data['unconfirmed'], $data['flagged']], 'both expired reports went unconfirmed; too few to flag');
         self::assertSame([['server_name' => 'Monza', 'reports' => 2], ['server_name' => 'Antica', 'reports' => 1]], $data['worlds']);
         self::assertSame([['Dragon Warden', 2], ['Hydra Warden', 1]], array_map(static fn (array $m): array => [$m['name'], $m['reports']], $data['monsters']));
         self::assertSame(['Darashia dragons', 'Old one', 'Older one'], array_column($data['recent'], 'location'));
@@ -308,6 +310,20 @@ final class AdminApiTest extends ApiTestCase
         self::assertSame($data['recent'][0]['created_at'], $data['last_report_at']);
         self::assertSame($data['recent'][2]['created_at'], $data['first_report_at']);
 
+        // In a window: everything but the last 7 / 30 days counts only its reports.
+        $from = urlencode($now->modify('-15 days')->format(\DATE_ATOM));
+        $until = urlencode($now->modify('-2 hours')->format(\DATE_ATOM));
+        $window = $this->requestJson('GET', "/api/v1/admin/users/{$player->getId()}/reports?from=$from&until=$until", null, $adminToken);
+        self::assertResponseIsSuccessful();
+        self::assertSame([1, 1, 2], [$window['total'], $window['last_7_days'], $window['last_30_days']]);
+        self::assertSame(['active' => 0, 'killed' => 0, 'expired' => 1], $window['by_status']);
+        self::assertSame(1, $window['unconfirmed']);
+        self::assertSame([['server_name' => 'Monza', 'reports' => 1]], $window['worlds']);
+        self::assertSame(['Old one'], array_column($window['recent'], 'location'));
+        self::assertSame($window['first_report_at'], $window['last_report_at']);
+        $this->requestJson('GET', "/api/v1/admin/users/{$player->getId()}/reports?from=$until&until=$from", null, $adminToken);
+        self::assertResponseStatusCodeSame(400);
+
         $empty = $this->requestJson('GET', "/api/v1/admin/users/{$admin->getId()}/reports", null, $adminToken);
         self::assertSame([0, null, []], [$empty['total'], $empty['last_report_at'], $empty['recent']]);
 
@@ -315,6 +331,37 @@ final class AdminApiTest extends ApiTestCase
         self::assertResponseStatusCodeSame(404);
         $this->requestJson('GET', "/api/v1/admin/users/{$player->getId()}/reports", null, $playerToken);
         self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testFlagsAPlayerWhoseReportsNobodyConfirms(): void
+    {
+        $admin = $this->createUser('admin@example.com', self::ADMIN_DISCORD_ID);
+        $faker = $this->createUser('faker@example.com', '333333333333333333');
+        $honest = $this->createUser('honest@example.com', '444444444444444444');
+        $dragon = $this->createMonster('Dragon Warden');
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        for ($i = 1; $i <= 5; ++$i) {
+            $this->em->persist(new WardenSpawn($dragon, 'Monza', "Nowhere $i", $faker, createdAt: $now->modify("-$i hours")));
+            $kept = new WardenSpawn($dragon, 'Antica', "Real $i", $honest, createdAt: $now->modify("-$i hours"));
+            $kept->markKilled($faker, $now->modify("-$i hours +3 minutes"));
+            $this->em->persist($kept);
+        }
+        // The faker's last one was confirmed: someone else clicked [OMW] on it.
+        $confirmed = new WardenSpawn($dragon, 'Monza', 'Confirmed', $faker, createdAt: $now->modify('-30 hours'));
+        $this->em->persist($confirmed);
+        $presence = new WardenSpawnPresence($confirmed, '123456789012345678', $now);
+        $presence->replace(['444444444444444444'], [], $now);
+        $this->em->persist($presence);
+        $this->em->flush();
+        $this->grantAdmins();
+        $token = $this->tokenFor($admin);
+
+        $users = array_column($this->requestJson('GET', '/api/v1/admin/users', null, $token)['users'], null, 'id');
+        self::assertSame([5, true], [$users[$faker->getId()]['unconfirmed_reports'], $users[$faker->getId()]['reports_flagged']]);
+        self::assertSame([0, false], [$users[$honest->getId()]['unconfirmed_reports'], $users[$honest->getId()]['reports_flagged']]);
+
+        $stats = $this->requestJson('GET', "/api/v1/admin/users/{$faker->getId()}/reports", null, $token);
+        self::assertSame([6, 5, true], [$stats['total'], $stats['unconfirmed'], $stats['flagged']]);
     }
 
     public function testDeletesAReportAndTellsTheBotToTakeItsAlertsDown(): void

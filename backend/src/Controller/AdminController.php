@@ -6,6 +6,7 @@ use App\Dto\CreateCharacterRequest;
 use App\Entity\AdminAction;
 use App\Entity\Character;
 use App\Entity\User;
+use App\Http\DateWindow;
 use App\Http\Problem;
 use App\Repository\ApiTokenRepository;
 use App\Repository\CharacterRepository;
@@ -21,6 +22,8 @@ use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -37,6 +40,8 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  * reports, block / unblock and manage characters, but only of players who are not staff.
  * Unlinking Discord, resetting passwords, deleting accounts and the moderator rank stay
  * with the admins.
+ *
+ * Every action takes an optional `reason` in the JSON body, kept in the admin history.
  */
 #[Route('/api/v1/admin')]
 final class AdminController extends AbstractController
@@ -54,6 +59,7 @@ final class AdminController extends AbstractController
         private readonly EntityManagerInterface $em,
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock,
+        private readonly RequestStack $requests,
     ) {
     }
 
@@ -105,10 +111,15 @@ final class AdminController extends AbstractController
         return $this->json(['users' => $this->directory->all()]);
     }
 
-    /** How often and what one player has reported: for the Reports panel in the Players tab. */
+    /** How often and what one player has reported: for the Reports panel in the Players tab. `from` / `until` narrow it to those dates. */
     #[Route('/users/{id<\d+>}/reports', name: 'api_admin_user_reports', methods: ['GET'])]
-    public function reports(int $id, #[CurrentUser] User $admin, ReporterStats $stats): JsonResponse
-    {
+    public function reports(
+        int $id,
+        #[CurrentUser] User $admin,
+        ReporterStats $stats,
+        #[MapQueryParameter] ?string $from = null,
+        #[MapQueryParameter] ?string $until = null,
+    ): JsonResponse {
         if ($denied = $this->notAllowed($admin, self::STAFF)) {
             return $denied;
         }
@@ -116,7 +127,12 @@ final class AdminController extends AbstractController
             throw $this->createNotFoundException('Player not found.');
         }
 
-        return $this->json($stats->of($id));
+        $window = DateWindow::parse($from, $until);
+        if ($window instanceof JsonResponse) {
+            return $window;
+        }
+
+        return $this->json($stats->of($id, $window));
     }
 
     /**
@@ -135,7 +151,7 @@ final class AdminController extends AbstractController
         $details = \sprintf('%s on %s, %s UTC', $spawn->getMonster()->getName(), $spawn->getServerName(), $spawn->getCreatedAt()->setTimezone(new \DateTimeZone('UTC'))->format('j M H:i'));
 
         $this->em->remove($spawn);
-        $this->em->persist(new AdminAction($admin, $reporter, 'delete_report', $details, $this->clock->now()));
+        $this->em->persist(new AdminAction($admin, $reporter, 'delete_report', $details, $this->clock->now(), reason: $this->reason()));
         $this->em->flush();
         $bus->dispatch($event);
         $this->logger->info('Admin {admin}: deleted report {spawn} ({details}).', ['admin' => $admin->getDisplayName(), 'spawn' => $event->spawnId, 'details' => $details]);
@@ -215,7 +231,7 @@ final class AdminController extends AbstractController
         }
 
         $label = $player->getDisplayName();
-        $this->em->persist(new AdminAction($admin, $player, 'delete', null, $this->clock->now()));
+        $this->em->persist(new AdminAction($admin, $player, 'delete', null, $this->clock->now(), reason: $this->reason()));
         $this->em->flush();
         // In SQL, so the database cascades do the rest (characters, bestiary, tokens; reports keep no reporter).
         $this->em->getConnection()->delete('users', ['id' => $id]);
@@ -281,11 +297,23 @@ final class AdminController extends AbstractController
         if (($problem = $change($player)) instanceof JsonResponse) {
             return $problem;
         }
-        $this->em->persist(new AdminAction($admin, $player, $what, $this->details, $this->clock->now()));
+        $this->em->persist(new AdminAction($admin, $player, $what, $this->details, $this->clock->now(), reason: $this->reason()));
         $this->em->flush();
         $this->logger->info('Admin {admin}: {what} on {player}.', ['admin' => $admin->getDisplayName(), 'player' => $player->getDisplayName(), 'what' => $what]);
 
         return $this->json($this->directory->one($id));
+    }
+
+    /** The optional `reason` of the JSON body; anything else (or none) is no reason. */
+    private function reason(): ?string
+    {
+        try {
+            $reason = $this->requests->getCurrentRequest()?->toArray()['reason'] ?? null;
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return \is_string($reason) ? $reason : null;
     }
 
     /** 12 characters without look-alikes (0/O, 1/l/I), easy to read out on Discord. */
