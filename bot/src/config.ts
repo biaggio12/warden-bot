@@ -29,6 +29,8 @@ export interface Config {
   summaryWeekly: boolean;
   /** At summaryTime on the 1st, also a summary of the previous month. */
   summaryMonthly: boolean;
+  /** Discord ids of the website's admins (ADMIN_DISCORD_IDS): they may use /maintenance. */
+  adminDiscordIds: string[];
 }
 
 function optional(name: string): string | null {
@@ -84,6 +86,14 @@ function summaryTimeZone(): string {
   return zone;
 }
 
+/** A comma separated list of Discord ids (snowflakes); anything else is skipped. */
+function discordIds(name: string): string[] {
+  return (optional(name) ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => /^\d{17,20}$/.test(id));
+}
+
 export function loadConfig(): Config {
   return {
     discordToken: discordToken(),
@@ -98,13 +108,11 @@ export function loadConfig(): Config {
     directMessages: flag('DISCORD_DM_ENABLED', false),
     deleteExpired: flag('DISCORD_DELETE_EXPIRED', true),
     pingCleanupMs: Number(optional('DISCORD_PING_CLEANUP_SECONDS') ?? 1) * 1000,
-    pingRoleIds: (optional('DISCORD_PING_ROLE_IDS') ?? '')
-      .split(',')
-      .map((id) => id.trim())
-      .filter((id) => /^\d{17,20}$/.test(id)),
+    pingRoleIds: discordIds('DISCORD_PING_ROLE_IDS'),
     summaryTime: summaryTime(),
     summaryTimeZone: summaryTimeZone(),
     summaryWeekly: flag('DISCORD_SUMMARY_WEEKLY', true),
     summaryMonthly: flag('DISCORD_SUMMARY_MONTHLY', true),
+    adminDiscordIds: discordIds('ADMIN_DISCORD_IDS'),
   };
 }

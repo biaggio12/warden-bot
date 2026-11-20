@@ -7,6 +7,7 @@ use App\Entity\User;
 use App\Entity\WardenSpawn;
 use App\Http\Json;
 use App\Http\Problem;
+use App\Message\ResolveDuels;
 use App\Message\WardenKilledEvent;
 use App\Message\WardenSpawnedEvent;
 use App\Repository\CharacterRepository;
@@ -203,10 +204,12 @@ final class WardenSpawnController extends AbstractController
             return Problem::response(409, 'This report is no longer active.');
         }
 
-        $spawn->markKilled();
+        $spawn->markKilled($user, $this->clock->now());
         $em->flush();
 
         $bus->dispatch(WardenKilledEvent::fromSpawn($spawn, $user));
+        // A duel waiting for this report to close gets its result now, not on the next tick.
+        $bus->dispatch(new ResolveDuels());
         $logger->info('{user} closed the {monster} report on {world} as killed.', [
             'user' => $user->getDisplayName(),
             'monster' => $spawn->getMonster()->getName(),

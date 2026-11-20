@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { endpoints } from '../api/endpoints';
 import type { AdminActionEntry, Player, PlayerReports } from '../api/types';
 import AlertChannelsSection from '../components/AlertChannelsSection';
+import BotMaintenanceSection from '../components/BotMaintenanceSection';
+import DuelReviewSection from '../components/DuelReviewSection';
 import AddCharacterForm from '../components/AddCharacterForm';
 import { ChevronIcon, TrashIcon } from '../components/Icons';
 import MonsterImage from '../components/MonsterImage';
@@ -104,6 +106,10 @@ export default function PlayersPage({ isAdmin = false }: { isAdmin?: boolean }) 
 
       {isAdmin && <AlertChannelsSection onChange={history.reload} />}
 
+      {isAdmin && <BotMaintenanceSection onPosted={history.reload} />}
+
+      <DuelReviewSection players={list?.map((p) => ({ id: p.id, name: nickOf(p) })) ?? []} />
+
       {history.data && <AdminHistory actions={history.data} />}
     </>
   );
@@ -122,6 +128,8 @@ const ACTION_LABELS: Record<AdminActionEntry['action'], string> = {
   delete_report: 'deleted a report of',
   set_alert_channel: 'chose an alert channel on',
   reset_alert_channel: 'went back to the named alert channel on',
+  bot_maintenance: 'posted the bot maintenance notice on',
+  bot_back_online: 'posted that the bot is back on',
 };
 
 const timeFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -156,6 +164,14 @@ function AdminHistory({ actions }: { actions: AdminActionEntry[] }) {
 
 function nameOf(player: Player): string {
   return player.email ?? player.discord_username ?? `account #${player.id}`;
+}
+
+/** The nickname the duel review uses (backend PlayerNames): Discord name, else characters. */
+function nickOf(player: Pick<Player, 'id' | 'discord_username' | 'characters'>): string {
+  if (player.discord_username) return player.discord_username;
+  const names = [...player.characters.map((c) => c.name)].sort((a, b) => a.localeCompare(b));
+  if (names.length > 0) return names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
+  return `Player #${player.id}`;
 }
 
 type RowProps = {

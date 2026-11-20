@@ -31,6 +31,8 @@ import {
   type PresenceList,
   type KillTarget,
 } from './messages.js';
+import { DuelCommands, duelCommand, parseDuelButtonId, pointsCommand } from './duels.js';
+import { maintenanceCommand, type MaintenanceCommand } from './maintenance.js';
 import type { MonsterCatalog } from './monsterCatalog.js';
 import { ReportCommand, UserError, reportCommand } from './reportCommand.js';
 
@@ -46,6 +48,9 @@ export const commands = [
       option.setName('code').setDescription('Code from the Warden Tracker web app (Characters tab)').setRequired(true).setMaxLength(16),
     ),
   reportCommand,
+  maintenanceCommand,
+  duelCommand,
+  pointsCommand,
 ].map((command) => command.toJSON());
 
 /**
@@ -54,6 +59,7 @@ export const commands = [
  */
 export class InteractionHandler {
   private readonly report: ReportCommand;
+  private readonly duels: DuelCommands;
 
   constructor(
     private readonly api: ApiClient,
@@ -62,8 +68,10 @@ export class InteractionHandler {
     channelPrefix = 'wardens-',
     private readonly presence = new AlertPresence(),
     channels = new AlertChannels(async () => [], channelPrefix),
+    private readonly maintenance: MaintenanceCommand | null = null,
   ) {
     this.report = new ReportCommand(api, catalog, channelPrefix, channels);
+    this.duels = new DuelCommands(api);
   }
 
   async handle(interaction: Interaction): Promise<void> {
@@ -78,6 +86,16 @@ export class InteractionHandler {
         await this.handleLink(interaction);
       } else if (interaction.isChatInputCommand() && interaction.commandName === 'warden') {
         await this.report.execute(interaction);
+      } else if (interaction.isChatInputCommand() && interaction.commandName === 'maintenance') {
+        await (this.maintenance
+          ? this.maintenance.execute(interaction)
+          : interaction.reply({ content: '⚠️ This command is not available.', flags: MessageFlags.Ephemeral }));
+      } else if (interaction.isChatInputCommand() && interaction.commandName === 'duel') {
+        await this.duels.executeDuel(interaction);
+      } else if (interaction.isChatInputCommand() && interaction.commandName === 'points') {
+        await this.duels.executePoints(interaction);
+      } else if (interaction.isButton() && parseDuelButtonId(interaction.customId)) {
+        await this.duels.handleButton(interaction, parseDuelButtonId(interaction.customId)!, (error) => this.errorMessage(error));
       } else if (interaction.isButton() && parseCheckCustomId(interaction.customId)) {
         await this.handleCheck(interaction, parseCheckCustomId(interaction.customId)!);
       } else if (interaction.isButton() && parseGoneCustomId(interaction.customId)) {

@@ -50,11 +50,51 @@ export interface WardenKilled {
   killed_by_name: string | null;
 }
 
+/** An admin posted the maintenance notice on the website, before a deploy. */
+export interface BotMaintenance {
+  /** When the bot should be back; null when the admin did not say. */
+  back_at: string | null;
+  note: string | null;
+  requested_by: string;
+}
+
+/** An admin posted on the website that the deploy is over: the bot works again. */
+export interface BotBackOnline {
+  note: string | null;
+  requested_by: string;
+}
+
+/** A duel's time and scoring grace are over: the result, for the channel it was started in. */
+export interface DuelFinished {
+  duel_id: string;
+  minutes: number;
+  /** Points the winner took from the loser (none on a draw); 0 from older backends. */
+  stake: number;
+  challenger: { discord_user_id: string | null; name: string; score: number };
+  opponent: { discord_user_id: string | null; name: string; score: number };
+  result: 'challenger' | 'opponent' | 'draw';
+  discord_channel_id: string | null;
+  discord_message_id: string | null;
+}
+
+/** Nobody accepted a challenge in time. */
+export interface DuelExpired {
+  duel_id: string;
+  challenger_discord_user_id: string | null;
+  opponent_discord_user_id: string | null;
+  discord_channel_id: string | null;
+  discord_message_id: string | null;
+}
+
 export type WardenEvent =
   | { event: 'warden.spawned'; occurred_at: string; data: WardenSpawned }
   | { event: 'warden.expired'; occurred_at: string; data: WardenExpired }
   | { event: 'warden.killed'; occurred_at: string; data: WardenKilled }
-  | { event: 'warden.deleted'; occurred_at: string; data: WardenDeleted };
+  | { event: 'warden.deleted'; occurred_at: string; data: WardenDeleted }
+  | { event: 'bot.maintenance'; occurred_at: string; data: BotMaintenance }
+  | { event: 'bot.back_online'; occurred_at: string; data: BotBackOnline }
+  | { event: 'duel.finished'; occurred_at: string; data: DuelFinished }
+  | { event: 'duel.expired'; occurred_at: string; data: DuelExpired };
 
 export class InvalidEventError extends Error {}
 
@@ -159,6 +199,59 @@ export function parseEvent(raw: string): WardenEvent {
         data: {
           spawn_id: expectString(data, 'spawn_id'),
           server_name: expectString(data, 'server_name'),
+        },
+      };
+    case 'bot.maintenance':
+      return {
+        event: 'bot.maintenance',
+        occurred_at: occurredAt,
+        data: {
+          back_at: optionalString(data, 'back_at'),
+          note: optionalString(data, 'note'),
+          requested_by: expectString(data, 'requested_by'),
+        },
+      };
+    case 'bot.back_online':
+      return {
+        event: 'bot.back_online',
+        occurred_at: occurredAt,
+        data: { note: optionalString(data, 'note'), requested_by: expectString(data, 'requested_by') },
+      };
+    case 'duel.finished': {
+      const player = (key: 'challenger' | 'opponent') => {
+        const value = data[key];
+        if (!isObject(value)) throw new InvalidEventError(`Missing "${key}" object`);
+        return { discord_user_id: optionalString(value, 'discord_user_id'), name: expectString(value, 'name'), score: expectNumber(value, 'score') };
+      };
+      const result = data.result;
+      if (result !== 'challenger' && result !== 'opponent' && result !== 'draw') {
+        throw new InvalidEventError('Field "result" must be challenger, opponent or draw');
+      }
+      return {
+        event: 'duel.finished',
+        occurred_at: occurredAt,
+        data: {
+          duel_id: expectString(data, 'duel_id'),
+          minutes: expectNumber(data, 'minutes'),
+          stake: typeof data.stake === 'number' && Number.isInteger(data.stake) ? data.stake : 0,
+          challenger: player('challenger'),
+          opponent: player('opponent'),
+          result,
+          discord_channel_id: optionalString(data, 'discord_channel_id'),
+          discord_message_id: optionalString(data, 'discord_message_id'),
+        },
+      };
+    }
+    case 'duel.expired':
+      return {
+        event: 'duel.expired',
+        occurred_at: occurredAt,
+        data: {
+          duel_id: expectString(data, 'duel_id'),
+          challenger_discord_user_id: optionalString(data, 'challenger_discord_user_id'),
+          opponent_discord_user_id: optionalString(data, 'opponent_discord_user_id'),
+          discord_channel_id: optionalString(data, 'discord_channel_id'),
+          discord_message_id: optionalString(data, 'discord_message_id'),
         },
       };
     default:

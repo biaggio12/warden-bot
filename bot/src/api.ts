@@ -5,6 +5,7 @@
  */
 import type { ChannelAssignment } from './alertChannels.js';
 import type { DailySummaryData } from './dailySummary.js';
+import type { Duel, DuelList, PointsPeriod, PointsSummary } from './duels.js';
 import type { Presence } from './messages.js';
 
 export interface CharacterRef {
@@ -137,6 +138,36 @@ export class ApiClient {
       discordUserId,
     );
     return status === 201;
+  }
+
+  /** The player's open duel, recent ones and their record. */
+  async getDuels(discordUserId: string): Promise<DuelList> {
+    return this.request('GET', '/duels', undefined, discordUserId);
+  }
+
+  async createDuel(
+    discordUserId: string,
+    challenge: { opponent_discord_user_id: string; minutes: number; stake: number; discord_channel_id: string | null },
+  ): Promise<Duel> {
+    return this.request('POST', '/duels', challenge, discordUserId);
+  }
+
+  async acceptDuel(discordUserId: string, duelId: string): Promise<Duel> {
+    return this.request('POST', `/duels/${encodeURIComponent(duelId)}/accept`, undefined, discordUserId);
+  }
+
+  /** The opponent declines, or the challenger takes the challenge back. */
+  async declineDuel(discordUserId: string, duelId: string): Promise<Duel> {
+    return this.request('POST', `/duels/${encodeURIComponent(duelId)}/decline`, undefined, discordUserId);
+  }
+
+  /** The message showing the challenge, so the result can update it. */
+  async attachDuelMessage(duelId: string, channelId: string, messageId: string): Promise<void> {
+    await this.request('PUT', `/internal/duels/${encodeURIComponent(duelId)}/message`, { channel_id: channelId, message_id: messageId });
+  }
+
+  async getPoints(discordUserId: string, period: PointsPeriod): Promise<PointsSummary> {
+    return this.request('GET', `/points?${new URLSearchParams({ period })}`, undefined, discordUserId);
   }
 
   async linkDiscord(code: string, discordUserId: string): Promise<{ display_name: string }> {

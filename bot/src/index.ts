@@ -8,8 +8,10 @@ import { ApiClient } from './api.js';
 import { loadConfig, type Config } from './config.js';
 import { EventConsumer } from './consumer.js';
 import { DailySummary, summaryWindows } from './dailySummary.js';
+import { DuelAnnouncer } from './duels.js';
 import { startHealthServer } from './health.js';
 import { InteractionHandler, commands } from './interactions.js';
+import { MaintenanceCommand, buildBackOnlineMessage, buildMaintenanceMessage, noticeFromEvent } from './maintenance.js';
 import { MonsterCatalog } from './monsterCatalog.js';
 import { Notifier } from './notifier.js';
 import { Watchdog } from './watchdog.js';
@@ -56,7 +58,11 @@ async function main(): Promise<void> {
   );
 
   if (client) {
-    const interactions = new InteractionHandler(api, catalog, config.frontendUrl, config.channelPrefix, presence, channels);
+    const maintenance = new MaintenanceCommand(config.adminDiscordIds, (message) => notifier.broadcast(message, 'maintenance'));
+    const interactions = new InteractionHandler(api, catalog, config.frontendUrl, config.channelPrefix, presence, channels, maintenance);
+    if (config.adminDiscordIds.length === 0) {
+      console.warn('[maintenance] ADMIN_DISCORD_IDS is empty: nobody can use /maintenance');
+    }
 
     client.once(Events.ClientReady, (ready) => {
       console.info(`[discord] Logged in as ${ready.user.tag} in ${ready.guilds.cache.size} guild(s)`);
@@ -73,13 +79,30 @@ async function main(): Promise<void> {
     });
   }
 
+  const duels = new DuelAnnouncer(client);
   const consumer = new EventConsumer(config.amqpUrl, async (event) => {
-    if (event.event === 'warden.spawned') {
+    if (event.event === 'duel.finished') {
+      await duels.onFinished(event.data);
+    } else if (event.event === 'duel.expired') {
+      await duels.onExpired(event.data);
+    } else if (event.event === 'warden.spawned') {
       await notifier.onSpawned(event.data);
     } else if (event.event === 'warden.killed') {
       await notifier.onKilled(event.data);
     } else if (event.event === 'warden.deleted') {
       await notifier.onDeleted(event.data);
+    } else if (event.event === 'bot.maintenance') {
+      const notice = noticeFromEvent(event);
+      if (!notice) {
+        console.info(`[maintenance] Skipped the notice from ${event.data.requested_by} sent at ${event.occurred_at}: too old`);
+        return;
+      }
+      const posted = await notifier.broadcast(buildMaintenanceMessage(notice), 'maintenance');
+      console.info(`[maintenance] Notice from ${event.data.requested_by} (website) posted in ${posted} channel(s)`);
+    } else if (event.event === 'bot.back_online') {
+      // Never stale: sent while the bot was still down, it is right once the bot is back.
+      const posted = await notifier.broadcast(buildBackOnlineMessage(event.data.note), 'maintenance');
+      console.info(`[maintenance] "Bot is back" notice from ${event.data.requested_by} (website) posted in ${posted} channel(s)`);
     } else {
       await notifier.onExpired(event.data);
     }

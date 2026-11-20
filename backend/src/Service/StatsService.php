@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Entity\User;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Psr\Clock\ClockInterface;
 
@@ -20,6 +21,7 @@ final readonly class StatsService
     public function __construct(
         private Connection $db,
         private ClockInterface $clock,
+        private ReportScoring $scoring,
     ) {
     }
 
@@ -35,6 +37,8 @@ final readonly class StatsService
 
         $leaderboard = $this->leaderboard($sinceSql);
         $mine = array_values(array_filter($leaderboard, static fn (array $row) => $row['user_id'] === $viewer->getId()))[0] ?? null;
+        $points = $this->pointsLeaderboard($since ?? new \DateTimeImmutable('1970-01-01 00:00:00'), $now);
+        $myPoints = array_values(array_filter($points, static fn (array $row) => $row['user_id'] === $viewer->getId()))[0] ?? null;
 
         return [
             'period' => $period,
@@ -51,10 +55,21 @@ final readonly class StatsService
                 ],
                 \array_slice($leaderboard, 0, self::TOP),
             ),
+            'points_leaderboard' => array_map(
+                static fn (array $row) => [
+                    'rank' => $row['rank'],
+                    'player' => $row['player'],
+                    'points' => $row['points'],
+                    'is_you' => $row['user_id'] === $viewer->getId(),
+                ],
+                \array_slice($points, 0, self::TOP),
+            ),
             'bestiary_leaderboard' => $this->bestiaryLeaderboard($viewer),
             'you' => [
                 'reports' => $mine['reports'] ?? 0,
                 'rank' => $mine['rank'] ?? null,
+                'points' => $myPoints['points'] ?? 0,
+                'points_rank' => $myPoints['rank'] ?? null,
                 'reporters' => \count($leaderboard),
                 'reports_all_time' => (int) $this->db->fetchOne('SELECT COUNT(*) FROM warden_spawns WHERE reported_by_user_id = :u', ['u' => $viewer->getId()]),
                 'characters' => $this->bestiaryProgress($viewer),
@@ -140,6 +155,29 @@ final readonly class StatsService
             'reports' => (int) $r['reports'],
             'rank' => (int) $r['rank'],
         ], $rows);
+    }
+
+    /**
+     * Players ranked by points (counted reports, see ReportScoring) in the period.
+     *
+     * @return list<array{user_id: int, player: string, points: int, rank: int}>
+     */
+    public function pointsLeaderboard(\DateTimeImmutable $since, \DateTimeImmutable $now): array
+    {
+        $ranking = $this->scoring->ranking($since, $now->modify('+1 second'));
+        if ([] === $ranking) {
+            return [];
+        }
+        $names = [];
+        foreach ($this->db->fetchAllAssociative(
+            'SELECT id, email, discord_username FROM users WHERE id IN (:ids)',
+            ['ids' => array_column($ranking, 'user_id')],
+            ['ids' => ArrayParameterType::INTEGER],
+        ) as $row) {
+            $names[(int) $row['id']] = self::publicName($row['discord_username'], $row['email']);
+        }
+
+        return array_map(static fn (array $row) => $row + ['player' => $names[$row['user_id']] ?? 'Player'], $ranking);
     }
 
     /**

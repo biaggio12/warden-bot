@@ -82,9 +82,28 @@ export default function StatsPage() {
           <DailyChart days={data.reports_per_day} period={period} />
 
           <div className="grid items-start gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
-            <Leaderboard rows={data.leaderboard} />
+            <Leaderboard
+              title="Top reporters"
+              rows={data.leaderboard.map((row) => ({ ...row, value: row.reports }))}
+              unit={['report', 'reports']}
+              empty="No reports in this period yet."
+            />
             <YourStats you={data.you} periodLabel={PERIODS.find((p) => p.value === period)!.label.toLowerCase()} />
           </div>
+
+          <Leaderboard
+            title="Points"
+            rows={(data.points_leaderboard ?? []).map((row) => ({ ...row, value: row.points }))}
+            unit={['point', 'points']}
+            empty="No confirmed reports in this period yet."
+            note={
+              `You: ${plural(data.you.points ?? 0, 'point')}${data.you.points_rank ? ` (#${data.you.points_rank})` : ''}. ` +
+              'A report scores once it is confirmed (💀 Dead, or another player clicks 🏃 OMW or marks it killed) ' +
+              'and nobody reported the same Warden in the 10 minutes before. Harder Wardens are worth more: ' +
+              'Harmless 1 · Trivial 2 · Easy 3 · Medium 4 · Hard 10 · Challenging 25. ' +
+              'Duel others with /duel on Discord, optionally for points: the winner takes the stake from the loser.'
+            }
+          />
 
           <BestiaryLeaders rows={data.bestiary_leaderboard ?? []} />
 
@@ -175,15 +194,35 @@ function DailyChart({ days, period }: { days: Stats['reports_per_day']; period: 
 
 const MEDALS = ['bg-medal-1', 'bg-medal-2', 'bg-medal-3'];
 
-function Leaderboard({ rows }: { rows: Stats['leaderboard'] }) {
+interface LeaderRow {
+  rank: number;
+  player: string;
+  value: number;
+  is_you: boolean;
+}
+
+function Leaderboard({
+  title,
+  rows,
+  unit,
+  empty,
+  note,
+}: {
+  title: string;
+  rows: LeaderRow[];
+  unit: [singular: string, plural: string];
+  empty: string;
+  note?: string;
+}) {
   return (
     <section className="panel p-5 sm:p-6">
       <h2 className="flex items-center gap-2">
         <TrophyIcon className="h-5 w-5 text-accent-text" />
-        Top reporters
+        {title}
       </h2>
+      {note && <p className="mt-1 text-sm text-muted">{note}</p>}
       {rows.length === 0 ? (
-        <Empty text="No reports in this period yet." />
+        <Empty text={empty} />
       ) : (
         <ol className="mt-4 space-y-2">
           {rows.map((row) => (
@@ -197,7 +236,7 @@ function Leaderboard({ rows }: { rows: Stats['leaderboard'] }) {
                 {row.is_you && <span className="ml-2 text-sm font-semibold text-accent-text">you</span>}
               </span>
               <span className="text-xl font-bold tabular-nums">
-                {row.reports} <span className="sr-only">{row.reports === 1 ? 'report' : 'reports'}</span>
+                {row.value} <span className="sr-only">{row.value === 1 ? unit[0] : unit[1]}</span>
               </span>
             </li>
           ))}

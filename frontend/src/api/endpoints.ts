@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AdminActionEntry, HistoryPage, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
+import type { AdminActionEntry, AdminDuel, DuelPair, DuelReport, HistoryPage, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
 
 export const endpoints = {
   login: (email: string, password: string) => api<AuthResponse>('POST', '/auth/login', { email, password }),
@@ -27,10 +27,25 @@ export const endpoints = {
     /** Answers with the reporter's updated row (null when their account is gone). */
     deleteReport: (spawnId: string) => api<{ user: Player | null }>('DELETE', `/admin/reports/${spawnId}`),
     actions: () => api<{ actions: AdminActionEntry[] }>('GET', '/admin/actions').then((r) => r.actions),
+    /** `from` / `until`: ISO date-times; `userId`: only that player's duels. */
+    duels: (filter: { from?: string; until?: string; userId?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (filter.from) query.set('from', filter.from);
+      if (filter.until) query.set('until', filter.until);
+      if (filter.userId) query.set('user_id', String(filter.userId));
+      const qs = query.toString();
+      return api<{ from: string; until: string; duels: AdminDuel[]; truncated: boolean; pairs: DuelPair[] }>('GET', `/admin/duels${qs ? `?${qs}` : ''}`);
+    },
+    duelDetails: (id: string) => api<{ duel: AdminDuel; reports: DuelReport[] }>('GET', `/admin/duels/${id}`),
     /** Admins only. `refresh` reads the channels from Discord again. */
     alertChannels: (refresh = false) => api<AlertChannelSettings>('GET', `/admin/alert-channels${refresh ? '?refresh=1' : ''}`),
     setAlertChannel: (guildId: string, serverName: string, channelId: string) =>
       api<AlertChannelSettings>('PUT', '/admin/alert-channels', { guild_id: guildId, server_name: serverName, channel_id: channelId }),
+    /** Admins only: the bot posts "down for a moment" in every alert channel. */
+    botMaintenance: (minutes: number | null, message: string | null) =>
+      api<{ back_at: string | null }>('POST', '/admin/bot-maintenance', { minutes, message }),
+    /** Admins only: the bot posts "back" in every alert channel. */
+    botBackOnline: (message: string | null) => api<unknown>('POST', '/admin/bot-back-online', { message }),
     /** Back to the channel named <prefix><world>. */
     resetAlertChannel: (guildId: string, serverName: string) =>
       api<AlertChannelSettings>('DELETE', `/admin/alert-channels/${guildId}/${encodeURIComponent(serverName)}`),

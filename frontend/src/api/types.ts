@@ -104,7 +104,9 @@ export interface AdminActionEntry {
     | 'grant_moderator'
     | 'revoke_moderator'
     | 'set_alert_channel'
-    | 'reset_alert_channel';
+    | 'reset_alert_channel'
+    | 'bot_maintenance'
+    | 'bot_back_online';
   details: string | null;
   created_at: string;
 }
@@ -129,6 +131,8 @@ export interface Stats {
   top_monsters: CountRow[];
   top_cities: CountRow[];
   leaderboard: { rank: number; player: string; reports: number; is_you: boolean }[];
+  /** One point per report another player confirmed ([OMW] or a kill) that is not a duplicate. */
+  points_leaderboard: { rank: number; player: string; points: number; is_you: boolean }[];
   /** Characters with the most monsters marked in the bestiary, all time. */
   bestiary_leaderboard: { rank: number; character: string; server_name: string; killed: number; total: number; is_you: boolean }[];
   you: {
@@ -136,6 +140,8 @@ export interface Stats {
     rank: number | null;
     reporters: number;
     reports_all_time: number;
+    points: number;
+    points_rank: number | null;
     characters: { name: string; server_name: string; killed: number; total: number }[];
   };
 }
@@ -193,4 +199,48 @@ export interface HistoryPage {
   warden_spawns: HistoryEntry[];
   /** Pass as `before` for the next page; null on the last one. */
   next_before: string | null;
+}
+
+/** A duel as the staff see it (Players tab): real names, both scores. */
+export interface AdminDuel {
+  id: string;
+  status: 'pending' | 'active' | 'finished' | 'declined' | 'expired';
+  minutes: number;
+  stake: number;
+  created_at: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  challenger: { id: number; name: string; score: number | null };
+  opponent: { id: number; name: string; score: number | null };
+  result: 'challenger' | 'opponent' | 'draw' | null;
+}
+
+/** Two players who met in finished duels in the last 30 days. */
+export interface DuelPair {
+  a: { id: number; name: string };
+  b: { id: number; name: string };
+  duels: number;
+  a_wins: number;
+  b_wins: number;
+  draws: number;
+  /** Net stakes that went from b to a (negative: from a to b). */
+  stakes_to_a: number;
+  last_at: string;
+  /** repeated: 3+ duels within 7 days; one_sided: one side won all of 3+ duels played for points. */
+  flags: ('repeated' | 'one_sided')[];
+}
+
+export interface DuelReport {
+  id: string;
+  reporter: { id: number; name: string };
+  monster: string;
+  server_name: string;
+  status: 'active' | 'killed' | 'expired';
+  created_at: string;
+  confirmations: { type: 'dead' | 'omw' | 'kill'; user_id: number | null; name: string | null }[];
+  /** Confirmed only by the two players of the duel: nobody else saw the Warden. */
+  confirmed_only_by_duel_players: boolean;
+  duplicate: boolean;
+  counted: boolean;
+  points: number;
 }
