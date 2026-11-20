@@ -43,9 +43,8 @@ export default function BotMaintenanceSection({ onPosted }: { onPosted?: () => v
   }
 
   return (
-    <section className="mt-10" aria-labelledby="bot-maintenance">
-      <h2 id="bot-maintenance">Bot maintenance notice</h2>
-      <p className="mt-1 mb-4 text-sm text-muted">
+    <div>
+      <p className="mb-4 text-sm text-muted">
         Around a deploy, tell the players on Discord that the bot is down for a moment, and that it is back once the new version runs. The bot posts it
         in every alert channel, on every server.
       </p>
@@ -100,6 +99,6 @@ export default function BotMaintenanceSection({ onPosted }: { onPosted?: () => v
         </div>
         <p className="text-xs text-muted sm:col-span-2">&quot;Back in&quot; is only used for &quot;bot down&quot;; the note goes with either.</p>
       </div>
-    </section>
+    </div>
   );
 }

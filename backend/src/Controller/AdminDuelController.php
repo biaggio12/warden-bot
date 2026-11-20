@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\User;
+use App\Http\DateWindow;
 use App\Http\Problem;
 use App\Security\AdminPolicy;
 use App\Service\DuelAudit;
@@ -43,17 +44,12 @@ final class AdminDuelController extends AbstractController
         if (!$this->admins->isStaff($user)) {
             return Problem::response(403, 'Admins and moderators only.');
         }
-        try {
-            $start = null === $from || '' === $from ? null : new \DateTimeImmutable($from);
-            $end = null === $until || '' === $until ? null : new \DateTimeImmutable($until);
-        } catch (\Exception) {
-            return Problem::response(400, 'from and until must be dates and times.');
-        }
-        if (null !== $start && null !== $end && ($start >= $end || $start < $end->modify(\sprintf('-%d days', self::MAX_DAYS)))) {
-            return Problem::response(400, \sprintf('from must be before until, at most %d days.', self::MAX_DAYS));
+        $window = DateWindow::parse($from, $until, self::MAX_DAYS);
+        if ($window instanceof JsonResponse) {
+            return $window;
         }
 
-        return $this->json($this->audit->overview($start, $end, $userId));
+        return $this->json($this->audit->overview($window->from, $window->until, $userId));
     }
 
     #[Route('/{id}', name: 'api_admin_duel_details', methods: ['GET'])]
