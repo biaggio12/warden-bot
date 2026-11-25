@@ -21,6 +21,8 @@ framework:
             App\Message\WardenDeletedEvent: discord_events
             App\Message\BotMaintenanceEvent: discord_events
             App\Message\BotBackOnlineEvent: discord_events
+            App\Message\DuelFinishedEvent: discord_events
+            App\Message\DuelExpiredEvent: discord_events
 
 when@test:
     framework:

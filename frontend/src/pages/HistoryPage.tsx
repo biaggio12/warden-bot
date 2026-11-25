@@ -4,6 +4,7 @@ import type { HistoryEntry, Monster } from '../api/types';
 import MonsterCombobox from '../components/MonsterCombobox';
 import MonsterImage from '../components/MonsterImage';
 import { PageHead } from '../components/PageHead';
+import { dayString, dayWindow } from '../lib/dates';
 import { useAsync } from '../lib/useAsync';
 
 const timeFormat = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -19,12 +20,19 @@ function reporterName({ reported_by: by }: HistoryEntry): string {
   return by.discord_name ?? 'a deleted account';
 }
 
-/** Every past report, newest first, by world and monster. */
+/** Every past report, newest first, by world, monster, reporter and dates. */
 export default function HistoryPage() {
   const worlds = useAsync(endpoints.worlds, []);
   const monsters = useAsync(endpoints.monsters, []);
+  const reporters = useAsync(endpoints.reporters, []);
   const [world, setWorld] = useState('');
   const [monster, setMonster] = useState<Monster | null>(null);
+  const [reporterId, setReporterId] = useState<number | null>(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const range = dayWindow(from, to);
+  const today = dayString(new Date());
+  const filtered = monster !== null || reporterId !== null || from !== '' || to !== '';
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [next, setNext] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,10 +42,16 @@ export default function HistoryPage() {
 
   async function load(before?: string) {
     const request = ++latest.current;
+    if (!range) {
+      setEntries([]);
+      setNext(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const page = await endpoints.history({ serverName: world || undefined, monsterId: monster?.id, before });
+      const page = await endpoints.history({ serverName: world || undefined, monsterId: monster?.id, reporterId: reporterId ?? undefined, ...range, before });
       if (request !== latest.current) return;
       setEntries((current) => (before ? [...current, ...page.warden_spawns] : page.warden_spawns));
       setNext(page.next_before);
@@ -50,7 +64,16 @@ export default function HistoryPage() {
 
   useEffect(() => {
     void load();
-  }, [world, monster?.id]);
+  }, [world, monster?.id, reporterId, from, to]);
+
+  function clearFilters() {
+    setMonster(null);
+    setReporterId(null);
+    setFrom('');
+    setTo('');
+  }
+
+  const reporterLabel = reporterId === null ? null : (reporters.data ?? []).find((r) => r.id === reporterId)?.name;
 
   return (
     <>
@@ -73,19 +96,48 @@ export default function HistoryPage() {
             <div className="sm:w-64" aria-label="Monster">
               <MonsterCombobox monsters={monsters.data ?? []} value={monster} onChange={setMonster} />
             </div>
-            {monster && (
-              <button type="button" className="btn-quiet" onClick={() => setMonster(null)}>
-                All monsters
-              </button>
-            )}
           </div>
         }
       />
 
+      <form className="mb-4 flex flex-wrap items-end gap-3" aria-label="Filter reports" onSubmit={(e) => e.preventDefault()}>
+        <label className="w-full text-sm sm:w-64">
+          <span className="mb-1 block text-muted">Reported by</span>
+          <select className="input" value={reporterId ?? ''} onChange={(e) => setReporterId(e.target.value === '' ? null : Number(e.target.value))}>
+            <option value="">Everyone</option>
+            {(reporters.data ?? []).map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">From</span>
+          <input type="date" className="input" value={from} max={to || today} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">To</span>
+          <input type="date" className="input" value={to} min={from || undefined} max={today} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        {filtered && (
+          <button type="button" className="btn-quiet" onClick={clearFilters}>
+            Clear filters
+          </button>
+        )}
+      </form>
+
+      {!range && <p className="mb-4 text-sm text-hp">Pick a start date on or before the end date.</p>}
+
       {error && <p className="panel mb-4 p-4 text-hp">{error}</p>}
 
       {!loading && !error && entries.length === 0 ? (
-        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">No reports{world ? ` on ${world}` : ''}{monster ? ` of ${monster.name}` : ''} yet.</p>
+        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">
+          No reports{world ? ` on ${world}` : ''}
+          {monster ? ` of ${monster.name}` : ''}
+          {reporterLabel ? ` by ${reporterLabel}` : ''}
+          {from || to ? ' in these dates' : ' yet'}.
+        </p>
       ) : (
         <ol className={`panel divide-y-2 divide-rule transition-opacity duration-(--dur-short) ${loading ? 'opacity-60' : ''}`}>
           {entries.map((entry) => (

@@ -67,6 +67,7 @@ export const PRESENCE_VISIBLE = 10;
 const SEPARATOR = '|';
 /** Element damage of the Warden; only useful while it can still be hunted, so dropped once the report is over. */
 const SENSITIVITIES_FIELD = 'Sensitivities';
+const EXPIRED_FIELD = 'Expired';
 
 export interface KillTarget {
   spawnId: string;
@@ -169,8 +170,8 @@ function hpField(monsterName: string): { name: string; value: string; inline: tr
 }
 
 /**
- * The alert posted in #wardens-<world> and sent as DM. Uses Discord's native
- * <t:unix:R> timestamp so the countdown updates client-side.
+ * The alert posted in #wardens-<world> and sent as DM. Times use Discord's native <t:unix:t>
+ * timestamp, so each reader sees them in their own time zone.
  */
 export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOptions = {}): BaseMessageOptions {
   const expiresAt = new Date(spawn.expires_at);
@@ -183,7 +184,8 @@ export function buildSpawnMessage(spawn: WardenSpawned, options: SpawnMessageOpt
       { name: 'Class', value: escapeMarkdown(spawn.monster.category), inline: true },
       ...hpField(spawn.monster.name),
       {
-        name: expired ? 'Expired' : 'Disappears',
+        name: expired ? EXPIRED_FIELD : 'Disappears',
+        // A live alert counts down; once it is over only the clock time stays, so it never reads "8 minutes ago".
         value: expired ? time(expiresAt, TimestampStyles.ShortTime) : `${time(expiresAt, TimestampStyles.RelativeTime)} (${time(expiresAt, TimestampStyles.ShortTime)})`,
         inline: true,
       },
@@ -368,9 +370,19 @@ export function isFinishedAlert(message: PostedMessage): boolean {
     .every((button) => button.disabled);
 }
 
-/** The alert's embed once the report is over (expired or dead): the Sensitivities field is dropped. */
+/**
+ * The alert's embed once the report is over (expired or dead): the Sensitivities field is dropped
+ * and a "Disappears" countdown left on it becomes a fixed "Expired" time.
+ */
 export function finishedEmbed(embed: APIEmbed): EmbedBuilder {
-  return EmbedBuilder.from(embed).setFields((embed.fields ?? []).filter((f) => f.name !== SENSITIVITIES_FIELD));
+  const fields = (embed.fields ?? [])
+    .filter((f) => f.name !== SENSITIVITIES_FIELD)
+    .map((f) => {
+      if (!COUNTDOWN_FIELDS.includes(f.name)) return f;
+      const unix = f.value.match(/<t:(\d+):[a-zA-Z]>/)?.[1];
+      return unix ? { ...f, name: EXPIRED_FIELD, value: `<t:${unix}:${TimestampStyles.ShortTime}>` } : f;
+    });
+  return EmbedBuilder.from(embed).setFields(fields);
 }
 
 /** The message's button rows once the report is over (expired or dead): only links stay. */

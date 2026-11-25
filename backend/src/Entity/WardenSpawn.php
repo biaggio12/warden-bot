@@ -55,6 +55,14 @@ class WardenSpawn
     #[ORM\Column(length: 10, enumType: WardenSpawnStatus::class)]
     private WardenSpawnStatus $status = WardenSpawnStatus::Active;
 
+    /** Who clicked [Dead]: kept for the staff's duel review. null once that account is deleted. */
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(name: 'killed_by_user_id', nullable: true, onDelete: 'SET NULL')]
+    private ?User $killedBy = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $killedAt = null;
+
     public function __construct(
         Monster $monster,
         string $serverName,
@@ -145,8 +153,20 @@ class WardenSpawn
     }
 
     /** Someone killed the Warden before its time ran out; the alert is taken down. */
-    public function markKilled(): void
+    public function markKilled(?User $by = null, ?\DateTimeImmutable $at = null): void
     {
         $this->status = WardenSpawnStatus::Killed;
+        $this->killedBy = $by;
+        $this->killedAt = $at?->setMicrosecond(0);
+    }
+
+    public function getKilledBy(): ?User
+    {
+        return $this->killedBy;
+    }
+
+    public function getKilledAt(): ?\DateTimeImmutable
+    {
+        return $this->killedAt;
     }
 }

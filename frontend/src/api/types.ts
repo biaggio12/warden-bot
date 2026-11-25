@@ -59,6 +59,10 @@ export interface Player {
   created_at: string;
   characters: Character[];
   reports: number;
+  /** Reports that ended without anyone confirming them (the rules of the points). */
+  unconfirmed_reports: number;
+  /** Many ended reports, at least half never confirmed: maybe made-up Wardens. */
+  reports_flagged: boolean;
   last_report_at: string | null;
   bestiary_marks: number;
 }
@@ -71,6 +75,9 @@ export interface PlayerReports {
   first_report_at: string | null;
   last_report_at: string | null;
   by_status: { active: number; killed: number; expired: number };
+  /** Ended without anyone confirming them. */
+  unconfirmed: number;
+  flagged: boolean;
   worlds: { server_name: string; reports: number }[];
   /** The 10 most reported. */
   monsters: { name: string; image_url: string | null; reports: number }[];
@@ -108,6 +115,8 @@ export interface AdminActionEntry {
     | 'bot_maintenance'
     | 'bot_back_online';
   details: string | null;
+  /** Why the admin did it, when they said. */
+  reason: string | null;
   created_at: string;
 }
 
@@ -131,6 +140,8 @@ export interface Stats {
   top_monsters: CountRow[];
   top_cities: CountRow[];
   leaderboard: { rank: number; player: string; reports: number; is_you: boolean }[];
+  /** One point per report another player confirmed ([OMW] or a kill) that is not a duplicate. */
+  points_leaderboard: { rank: number; player: string; points: number; is_you: boolean }[];
   /** Characters with the most monsters marked in the bestiary, all time. */
   bestiary_leaderboard: { rank: number; character: string; server_name: string; killed: number; total: number; is_you: boolean }[];
   you: {
@@ -138,6 +149,8 @@ export interface Stats {
     rank: number | null;
     reporters: number;
     reports_all_time: number;
+    points: number;
+    points_rank: number | null;
     characters: { name: string; server_name: string; killed: number; total: number }[];
   };
 }
@@ -195,4 +208,86 @@ export interface HistoryPage {
   warden_spawns: HistoryEntry[];
   /** Pass as `before` for the next page; null on the last one. */
   next_before: string | null;
+}
+
+/** A duel as the staff see it (Players tab): real names, both scores. */
+export interface AdminDuel {
+  id: string;
+  status: 'pending' | 'active' | 'finished' | 'declined' | 'expired';
+  minutes: number;
+  stake: number;
+  created_at: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  challenger: { id: number; name: string; score: number | null };
+  opponent: { id: number; name: string; score: number | null };
+  result: 'challenger' | 'opponent' | 'draw' | null;
+}
+
+/** Two players who met in finished duels in the last 30 days. */
+export interface DuelPair {
+  a: { id: number; name: string };
+  b: { id: number; name: string };
+  duels: number;
+  a_wins: number;
+  b_wins: number;
+  draws: number;
+  /** Net stakes that went from b to a (negative: from a to b). */
+  stakes_to_a: number;
+  last_at: string;
+  /** repeated: 3+ duels within 7 days; one_sided: one side won all of 3+ duels played for points. */
+  flags: ('repeated' | 'one_sided')[];
+}
+
+export interface DuelReport {
+  id: string;
+  reporter: { id: number; name: string };
+  monster: string;
+  server_name: string;
+  status: 'active' | 'killed' | 'expired';
+  created_at: string;
+  confirmations: { type: 'dead' | 'omw' | 'kill'; user_id: number | null; name: string | null }[];
+  /** Confirmed only by the two players of the duel: nobody else saw the Warden. */
+  confirmed_only_by_duel_players: boolean;
+  duplicate: boolean;
+  counted: boolean;
+  points: number;
+}
+
+/** One player closing another's reports with [Dead] (staff only). */
+export interface DeadClickPair {
+  closer: { id: number; name: string };
+  reporter: { id: number; name: string };
+  closures: number;
+  /** Closed within 2 minutes of the report. */
+  quick: number;
+  median_minutes: number;
+  /** Of the reporter's reports closed by others, the share this player closed. */
+  share: number;
+  last_at: string;
+  flags: ('frequent' | 'quick' | 'one_closer')[];
+}
+
+/** Why one of my reports earned points, or not (see the backend's ReportScoring::explain). */
+export type ReportOutcome = 'counted' | 'waiting' | 'unconfirmed' | 'duplicate';
+
+export interface MyReports {
+  period: StatsPeriod;
+  /** Points from reports in the period (duel stakes not included). */
+  points: number;
+  outcomes: Record<ReportOutcome, number>;
+  /** The newest 50. */
+  reports: {
+    id: string;
+    monster: string;
+    image_url: string | null;
+    server_name: string;
+    city: string | null;
+    location: string;
+    created_at: string;
+    outcome: ReportOutcome;
+    points: number;
+  }[];
+  /** Reports in the period. */
+  total: number;
 }

@@ -33,11 +33,10 @@ export default function AlertChannelsSection({ onChange }: { onChange?: () => vo
   const data = settings.data;
 
   return (
-    <section className="mt-10" aria-labelledby="alert-channels">
+    <div>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 id="alert-channels">Discord alert channels</h2>
-          <p className="mt-1 text-sm text-muted">
+          <p className="text-sm text-muted">
             Pick the channel that gets each world&apos;s alerts. Worlds without a choice use #{data?.prefix ?? 'wardens-'}&lt;world&gt;. The bot picks up changes within a minute.
           </p>
         </div>
@@ -72,7 +71,7 @@ export default function AlertChannelsSection({ onChange }: { onChange?: () => vo
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

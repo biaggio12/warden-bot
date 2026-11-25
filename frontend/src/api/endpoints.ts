@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AdminActionEntry, HistoryPage, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
+import type { AdminActionEntry, AdminDuel, DeadClickPair, DuelPair, MyReports, DuelReport, HistoryPage, AlertChannelSettings, AuthResponse, Character, DiscordConfig, DiscordGuild, Me, Monster, Player, PlayerReports, Stats, StatsPeriod, WardenSpawn } from './types';
 
 export const endpoints = {
   login: (email: string, password: string) => api<AuthResponse>('POST', '/auth/login', { email, password }),
@@ -12,21 +12,47 @@ export const endpoints = {
   players: () => api<{ users: Player[] }>('GET', '/admin/users').then((r) => r.users),
   /** Admin actions on another player's account; each answers with the updated row. */
   admin: {
-    block: (id: number) => api<Player>('POST', `/admin/users/${id}/block`),
-    unblock: (id: number) => api<Player>('POST', `/admin/users/${id}/unblock`),
+    /** `reason`: why, kept in the admin history (optional). */
+    block: (id: number, reason?: string) => api<Player>('POST', `/admin/users/${id}/block`, { reason }),
+    unblock: (id: number, reason?: string) => api<Player>('POST', `/admin/users/${id}/unblock`, { reason }),
     unlinkDiscord: (id: number) => api<Player>('POST', `/admin/users/${id}/unlink-discord`),
-    deleteUser: (id: number) => api<void>('DELETE', `/admin/users/${id}`),
+    deleteUser: (id: number, reason?: string) => api<void>('DELETE', `/admin/users/${id}`, { reason }),
     addCharacter: (id: number, name: string, serverName: string) =>
       api<Player>('POST', `/admin/users/${id}/characters`, { name, server_name: serverName }),
     deleteCharacter: (id: number, characterId: string) => api<Player>('DELETE', `/admin/users/${id}/characters/${characterId}`),
     /** A new temporary password, returned once. */
     resetPassword: (id: number) => api<{ password: string; user: Player }>('POST', `/admin/users/${id}/reset-password`),
-    reports: (id: number) => api<PlayerReports>('GET', `/admin/users/${id}/reports`),
+    /** `from` / `until`: ISO date-times; the stats count only the reports in between (last 7 / 30 days excepted). */
+    reports: (id: number, window: { from?: string; until?: string } = {}) => {
+      const query = new URLSearchParams(window).toString();
+      return api<PlayerReports>('GET', `/admin/users/${id}/reports${query ? `?${query}` : ''}`);
+    },
     grantModerator: (id: number) => api<Player>('POST', `/admin/users/${id}/moderator`),
     revokeModerator: (id: number) => api<Player>('DELETE', `/admin/users/${id}/moderator`),
     /** Answers with the reporter's updated row (null when their account is gone). */
-    deleteReport: (spawnId: string) => api<{ user: Player | null }>('DELETE', `/admin/reports/${spawnId}`),
+    deleteReport: (spawnId: string, reason?: string) => api<{ user: Player | null }>('DELETE', `/admin/reports/${spawnId}`, { reason }),
     actions: () => api<{ actions: AdminActionEntry[] }>('GET', '/admin/actions').then((r) => r.actions),
+    /** `from` / `until`: ISO date-times; `userId`: only that player's duels. */
+    duels: (filter: { from?: string; until?: string; userId?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (filter.from) query.set('from', filter.from);
+      if (filter.until) query.set('until', filter.until);
+      if (filter.userId) query.set('user_id', String(filter.userId));
+      const qs = query.toString();
+      return api<{ from: string; until: string; duels: AdminDuel[]; truncated: boolean; pairs: DuelPair[] }>('GET', `/admin/duels${qs ? `?${qs}` : ''}`);
+    },
+    /** Flagged Dead-click and duel pairs of the last `days` days, for the summary at the top of the Players tab. */
+    flags: () => api<{ days: number; dead_click_pairs: number; duel_pairs: number }>('GET', '/admin/flags'),
+    /** Who closes whose reports with [Dead]; `from` / `until`: ISO date-times, `userId`: pairs with that player. */
+    deadClicks: (filter: { from?: string; until?: string; userId?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (filter.from) query.set('from', filter.from);
+      if (filter.until) query.set('until', filter.until);
+      if (filter.userId) query.set('user_id', String(filter.userId));
+      const qs = query.toString();
+      return api<{ from: string; until: string; pairs: DeadClickPair[] }>('GET', `/admin/dead-clicks${qs ? `?${qs}` : ''}`);
+    },
+    duelDetails: (id: string) => api<{ duel: AdminDuel; reports: DuelReport[] }>('GET', `/admin/duels/${id}`),
     /** Admins only. `refresh` reads the channels from Discord again. */
     alertChannels: (refresh = false) => api<AlertChannelSettings>('GET', `/admin/alert-channels${refresh ? '?refresh=1' : ''}`),
     setAlertChannel: (guildId: string, serverName: string, channelId: string) =>
@@ -63,19 +89,27 @@ export const endpoints = {
       (r) => r.warden_spawns,
     ),
   /** The Warden was killed before its time ran out: closes the report and takes the Discord alert down. */
-  history: (filter: { serverName?: string; monsterId?: number; before?: string }) => {
+  /** `reporterId`: one player's reports; `from` / `until`: ISO date-times. */
+  history: (filter: { serverName?: string; monsterId?: number; reporterId?: number; from?: string; until?: string; before?: string }) => {
     const query = new URLSearchParams();
     if (filter.serverName) query.set('server_name', filter.serverName);
     if (filter.monsterId) query.set('monster_id', String(filter.monsterId));
+    if (filter.reporterId) query.set('reporter_id', String(filter.reporterId));
+    if (filter.from) query.set('from', filter.from);
+    if (filter.until) query.set('until', filter.until);
     if (filter.before) query.set('before', filter.before);
     const qs = query.toString();
     return api<HistoryPage>('GET', `/warden-spawns/history${qs ? `?${qs}` : ''}`);
   },
+  /** Everyone who has reported a Warden, by name, for the History filter. */
+  reporters: () => api<{ reporters: { id: number; name: string }[] }>('GET', '/warden-spawns/reporters').then((r) => r.reporters),
   killSpawn: (id: string) => api<WardenSpawn>('POST', `/warden-spawns/${id}/kill`),
   /** Empty when the player has no linked Discord or the server cannot list them. */
   discordGuilds: (serverName: string) =>
     api<{ enabled: boolean; guilds: DiscordGuild[] }>('GET', `/discord-guilds?server_name=${encodeURIComponent(serverName)}`).then((r) => r.guilds),
   stats: (period: StatsPeriod) => api<Stats>('GET', `/stats?period=${period}`),
+  /** My reports in the period, each with its points and why. */
+  myReports: (period: StatsPeriod) => api<MyReports>('GET', `/me/reports?period=${period}`),
   reportSpawn: (payload: {
     monster_id: number;
     server_name: string;

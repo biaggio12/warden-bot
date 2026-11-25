@@ -4,7 +4,7 @@ COMPOSE_PUBLIC = $(COMPOSE_PROD) -f docker-compose.public.yml
 PHP          = $(COMPOSE) exec php
 
 .DEFAULT_GOAL := help
-.PHONY: help init up down restart logs ps fixtures migrate test test-backend test-bot test-frontend shell prod-up prod-down public-up public-down backup
+.PHONY: help init up down restart logs ps fixtures migrate test test-backend test-bot test-frontend lint format shell prod-up prod-down public-up public-down backup
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -46,6 +46,14 @@ test-bot: ## Vitest for the Discord bot
 
 test-frontend: ## Vitest for the frontend
 	$(COMPOSE) exec frontend npm test
+
+lint: ## oxlint for the bot and the frontend
+	$(COMPOSE) exec bot npm run lint
+	$(COMPOSE) exec frontend npm run lint
+
+format: ## Prettier for the bot and the frontend (rewrites the files)
+	$(COMPOSE) exec bot npm run format
+	$(COMPOSE) exec frontend npm run format
 
 shell: ## Shell in the PHP container
 	$(PHP) sh
