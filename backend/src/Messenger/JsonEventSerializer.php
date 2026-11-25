@@ -2,6 +2,8 @@
 
 namespace App\Messenger;
 
+use App\Message\BotBackOnlineEvent;
+use App\Message\BotMaintenanceEvent;
 use App\Message\WardenDeletedEvent;
 use App\Message\WardenExpiredEvent;
 use App\Message\WardenKilledEvent;
@@ -22,6 +24,8 @@ final class JsonEventSerializer implements SerializerInterface
     public const EXPIRED = 'warden.expired';
     public const KILLED = 'warden.killed';
     public const DELETED = 'warden.deleted';
+    public const MAINTENANCE = 'bot.maintenance';
+    public const BACK_ONLINE = 'bot.back_online';
 
     public function encode(Envelope $envelope): array
     {
@@ -63,6 +67,15 @@ final class JsonEventSerializer implements SerializerInterface
             $message instanceof WardenDeletedEvent => [self::DELETED, [
                 'spawn_id' => $message->spawnId,
                 'server_name' => $message->serverName,
+            ]],
+            $message instanceof BotMaintenanceEvent => [self::MAINTENANCE, [
+                'back_at' => null === $message->backAt ? null : self::formatDate($message->backAt),
+                'note' => $message->note,
+                'requested_by' => $message->requestedBy,
+            ]],
+            $message instanceof BotBackOnlineEvent => [self::BACK_ONLINE, [
+                'note' => $message->note,
+                'requested_by' => $message->requestedBy,
             ]],
             default => throw new \InvalidArgumentException(\sprintf('Message "%s" is not an integration event.', $message::class)),
         };
@@ -120,6 +133,15 @@ final class JsonEventSerializer implements SerializerInterface
                 self::DELETED => new WardenDeletedEvent(
                     spawnId: $data['spawn_id'],
                     serverName: $data['server_name'],
+                ),
+                self::MAINTENANCE => new BotMaintenanceEvent(
+                    backAt: isset($data['back_at']) ? new \DateTimeImmutable($data['back_at']) : null,
+                    note: $data['note'] ?? null,
+                    requestedBy: $data['requested_by'],
+                ),
+                self::BACK_ONLINE => new BotBackOnlineEvent(
+                    note: $data['note'] ?? null,
+                    requestedBy: $data['requested_by'],
                 ),
                 default => throw new MessageDecodingFailedException('Unknown event type.'),
             };

@@ -104,7 +104,9 @@ export interface AdminActionEntry {
     | 'grant_moderator'
     | 'revoke_moderator'
     | 'set_alert_channel'
-    | 'reset_alert_channel';
+    | 'reset_alert_channel'
+    | 'bot_maintenance'
+    | 'bot_back_online';
   details: string | null;
   created_at: string;
 }

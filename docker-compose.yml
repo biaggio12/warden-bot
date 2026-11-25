@@ -136,6 +136,8 @@ services:
       DISCORD_SUMMARY_TIMEZONE: ${DISCORD_SUMMARY_TIMEZONE:-Europe/Warsaw}
       DISCORD_SUMMARY_WEEKLY: ${DISCORD_SUMMARY_WEEKLY:-true}
       DISCORD_SUMMARY_MONTHLY: ${DISCORD_SUMMARY_MONTHLY:-true}
+      # The website's admins: only they may post the /maintenance notice
+      ADMIN_DISCORD_IDS: ${ADMIN_DISCORD_IDS:-}
       # Sentry: own project via SENTRY_DSN_BOT, otherwise the backend's DSN
       SENTRY_DSN: ${SENTRY_DSN_BOT:-${SENTRY_DSN:-}}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}

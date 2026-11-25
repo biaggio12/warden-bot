@@ -50,11 +50,27 @@ export interface WardenKilled {
   killed_by_name: string | null;
 }
 
+/** An admin posted the maintenance notice on the website, before a deploy. */
+export interface BotMaintenance {
+  /** When the bot should be back; null when the admin did not say. */
+  back_at: string | null;
+  note: string | null;
+  requested_by: string;
+}
+
+/** An admin posted on the website that the deploy is over: the bot works again. */
+export interface BotBackOnline {
+  note: string | null;
+  requested_by: string;
+}
+
 export type WardenEvent =
   | { event: 'warden.spawned'; occurred_at: string; data: WardenSpawned }
   | { event: 'warden.expired'; occurred_at: string; data: WardenExpired }
   | { event: 'warden.killed'; occurred_at: string; data: WardenKilled }
-  | { event: 'warden.deleted'; occurred_at: string; data: WardenDeleted };
+  | { event: 'warden.deleted'; occurred_at: string; data: WardenDeleted }
+  | { event: 'bot.maintenance'; occurred_at: string; data: BotMaintenance }
+  | { event: 'bot.back_online'; occurred_at: string; data: BotBackOnline };
 
 export class InvalidEventError extends Error {}
 
@@ -160,6 +176,22 @@ export function parseEvent(raw: string): WardenEvent {
           spawn_id: expectString(data, 'spawn_id'),
           server_name: expectString(data, 'server_name'),
         },
+      };
+    case 'bot.maintenance':
+      return {
+        event: 'bot.maintenance',
+        occurred_at: occurredAt,
+        data: {
+          back_at: optionalString(data, 'back_at'),
+          note: optionalString(data, 'note'),
+          requested_by: expectString(data, 'requested_by'),
+        },
+      };
+    case 'bot.back_online':
+      return {
+        event: 'bot.back_online',
+        occurred_at: occurredAt,
+        data: { note: optionalString(data, 'note'), requested_by: expectString(data, 'requested_by') },
       };
     default:
       throw new InvalidEventError(`Unknown event type "${String(payload.event)}"`);

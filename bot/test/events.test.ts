@@ -63,6 +63,20 @@ describe('parseEvent', () => {
     });
   });
 
+  it('parses bot.maintenance, with the time and the note optional', () => {
+    const event = parseEvent(
+      JSON.stringify({ event: 'bot.maintenance', occurred_at: '2026-11-19T20:00:00Z', data: { back_at: null, note: null, requested_by: 'Admin' } }),
+    );
+
+    expect(event).toEqual({ event: 'bot.maintenance', occurred_at: '2026-11-19T20:00:00Z', data: { back_at: null, note: null, requested_by: 'Admin' } });
+  });
+
+  it('parses bot.back_online', () => {
+    const event = parseEvent(JSON.stringify({ event: 'bot.back_online', occurred_at: '2026-11-19T20:20:00Z', data: { note: 'Done', requested_by: 'Admin' } }));
+
+    expect(event).toEqual({ event: 'bot.back_online', occurred_at: '2026-11-19T20:20:00Z', data: { note: 'Done', requested_by: 'Admin' } });
+  });
+
   it('parses warden.deleted', () => {
     const event = parseEvent(JSON.stringify({ event: 'warden.deleted', occurred_at: '2026-11-02T10:00:00Z', data: { spawn_id: 'abc', server_name: 'Monza' } }));
 

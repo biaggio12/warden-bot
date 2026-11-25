@@ -31,6 +31,11 @@ export const endpoints = {
     alertChannels: (refresh = false) => api<AlertChannelSettings>('GET', `/admin/alert-channels${refresh ? '?refresh=1' : ''}`),
     setAlertChannel: (guildId: string, serverName: string, channelId: string) =>
       api<AlertChannelSettings>('PUT', '/admin/alert-channels', { guild_id: guildId, server_name: serverName, channel_id: channelId }),
+    /** Admins only: the bot posts "down for a moment" in every alert channel. */
+    botMaintenance: (minutes: number | null, message: string | null) =>
+      api<{ back_at: string | null }>('POST', '/admin/bot-maintenance', { minutes, message }),
+    /** Admins only: the bot posts "back" in every alert channel. */
+    botBackOnline: (message: string | null) => api<unknown>('POST', '/admin/bot-back-online', { message }),
     /** Back to the channel named <prefix><world>. */
     resetAlertChannel: (guildId: string, serverName: string) =>
       api<AlertChannelSettings>('DELETE', `/admin/alert-channels/${guildId}/${encodeURIComponent(serverName)}`),
