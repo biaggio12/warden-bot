@@ -7,12 +7,14 @@ use App\Entity\User;
 use App\Entity\WardenSpawn;
 use App\Enum\WardenSpawnStatus;
 use App\Message\ExpireWardenSpawns;
+use App\Message\ResolveDuels;
 use App\Message\WardenExpiredEvent;
 use App\MessageHandler\ExpireWardenSpawnsHandler;
 use App\Scheduler\WardenTtlSchedule;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
+use Symfony\Component\Scheduler\Generator\MessageContext;
 
 final class ExpireWardenSpawnsHandlerTest extends KernelTestCase
 {
@@ -53,9 +55,11 @@ final class ExpireWardenSpawnsHandlerTest extends KernelTestCase
         $schedule = static::getContainer()->get(WardenTtlSchedule::class)->getSchedule();
         $messages = $schedule->getRecurringMessages();
 
-        self::assertCount(2, $messages);
+        self::assertCount(3, $messages);
         self::assertStringContainsString('60', (string) $messages[0]->getTrigger());
+        // Duels are expired and scored every minute too.
+        self::assertInstanceOf(ResolveDuels::class, iterator_to_array($messages[1]->getMessages(new MessageContext('default', 'id', $messages[1]->getTrigger(), new \DateTimeImmutable())))[0] ?? null);
         // Wrong-password records are purged hourly.
-        self::assertStringContainsString('1 hour', (string) $messages[1]->getTrigger());
+        self::assertStringContainsString('1 hour', (string) $messages[2]->getTrigger());
     }
 }

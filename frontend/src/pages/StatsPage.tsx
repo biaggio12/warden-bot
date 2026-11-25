@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { endpoints } from '../api/endpoints';
-import type { CountRow, Stats, StatsPeriod } from '../api/types';
+import type { CountRow, MyReports, ReportOutcome, Stats, StatsPeriod } from '../api/types';
+import MonsterImage from '../components/MonsterImage';
 import { TrophyIcon } from '../components/Icons';
 import { PageHead } from '../components/PageHead';
 import SegmentBar from '../components/SegmentBar';
@@ -82,9 +83,30 @@ export default function StatsPage() {
           <DailyChart days={data.reports_per_day} period={period} />
 
           <div className="grid items-start gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
-            <Leaderboard rows={data.leaderboard} />
+            <Leaderboard
+              title="Top reporters"
+              rows={data.leaderboard.map((row) => ({ ...row, value: row.reports }))}
+              unit={['report', 'reports']}
+              empty="No reports in this period yet."
+            />
             <YourStats you={data.you} periodLabel={PERIODS.find((p) => p.value === period)!.label.toLowerCase()} />
           </div>
+
+          <Leaderboard
+            title="Points"
+            rows={(data.points_leaderboard ?? []).map((row) => ({ ...row, value: row.points }))}
+            unit={['point', 'points']}
+            empty="No confirmed reports in this period yet."
+            note={
+              `You: ${plural(data.you.points ?? 0, 'point')}${data.you.points_rank ? ` (#${data.you.points_rank})` : ''}. ` +
+              'A report scores once it is confirmed (💀 Dead, or another player clicks 🏃 OMW or marks it killed) ' +
+              'and nobody reported the same Warden in the 10 minutes before. Harder Wardens are worth more: ' +
+              'Harmless 1 · Trivial 2 · Easy 3 · Medium 4 · Hard 10 · Challenging 25. ' +
+              'Duel others with /duel on Discord, optionally for points: the winner takes the stake from the loser.'
+            }
+          />
+
+          <MyReportsSection period={period} periodLabel={PERIODS.find((p) => p.value === period)!.label.toLowerCase()} />
 
           <BestiaryLeaders rows={data.bestiary_leaderboard ?? []} />
 
@@ -175,15 +197,35 @@ function DailyChart({ days, period }: { days: Stats['reports_per_day']; period: 
 
 const MEDALS = ['bg-medal-1', 'bg-medal-2', 'bg-medal-3'];
 
-function Leaderboard({ rows }: { rows: Stats['leaderboard'] }) {
+interface LeaderRow {
+  rank: number;
+  player: string;
+  value: number;
+  is_you: boolean;
+}
+
+function Leaderboard({
+  title,
+  rows,
+  unit,
+  empty,
+  note,
+}: {
+  title: string;
+  rows: LeaderRow[];
+  unit: [singular: string, plural: string];
+  empty: string;
+  note?: string;
+}) {
   return (
     <section className="panel p-5 sm:p-6">
       <h2 className="flex items-center gap-2">
         <TrophyIcon className="h-5 w-5 text-accent-text" />
-        Top reporters
+        {title}
       </h2>
+      {note && <p className="mt-1 text-sm text-muted">{note}</p>}
       {rows.length === 0 ? (
-        <Empty text="No reports in this period yet." />
+        <Empty text={empty} />
       ) : (
         <ol className="mt-4 space-y-2">
           {rows.map((row) => (
@@ -197,7 +239,7 @@ function Leaderboard({ rows }: { rows: Stats['leaderboard'] }) {
                 {row.is_you && <span className="ml-2 text-sm font-semibold text-accent-text">you</span>}
               </span>
               <span className="text-xl font-bold tabular-nums">
-                {row.reports} <span className="sr-only">{row.reports === 1 ? 'report' : 'reports'}</span>
+                {row.value} <span className="sr-only">{row.value === 1 ? unit[0] : unit[1]}</span>
               </span>
             </li>
           ))}
@@ -328,4 +370,60 @@ function TopList({ title, rows }: { title: string; rows: CountRow[] }) {
 
 function Empty({ text }: { text: string }) {
   return <p className="mt-4 border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">{text}</p>;
+}
+
+const OUTCOMES: Record<ReportOutcome, { label: string; why: string; className: string }> = {
+  counted: { label: 'Counted', why: 'Confirmed: closed with Dead, or another player clicked OMW or marked it killed.', className: 'border-accent text-accent-text' },
+  waiting: { label: 'Waiting', why: 'Still up: it counts once it is closed with Dead, or another player clicks OMW or marks it killed.', className: 'border-ink-2 text-ink-2' },
+  unconfirmed: { label: 'Not confirmed', why: 'It ran out and nobody confirmed it.', className: 'border-rule text-muted' },
+  duplicate: { label: 'Duplicate', why: 'The same Warden had been reported shortly before.', className: 'border-rule text-muted' },
+};
+
+const reportTime = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/** My reports in the period: which earned points, which did not, and why. */
+function MyReportsSection({ period, periodLabel }: { period: StatsPeriod; periodLabel: string }) {
+  const mine = useAsync<MyReports>(() => endpoints.myReports(period), [period]);
+  const data = mine.data;
+
+  return (
+    <section className="panel p-5 sm:p-6" aria-labelledby="my-reports">
+      <h2 id="my-reports">Your reports and points</h2>
+      {mine.error && <p className="mt-3 text-sm text-hp">{mine.error.message}</p>}
+      {data && data.total === 0 && <Empty text={`You have not reported a Warden in the last ${periodLabel}.`} />}
+      {data && data.total > 0 && (
+        <div className={`transition-opacity duration-(--dur-short) ${mine.loading ? 'opacity-60' : ''}`}>
+          <p className="mt-2 text-sm text-muted">
+            {plural(data.points, 'point')} from {plural(data.total, 'report')}, {periodLabel}. Duel stakes are not included.
+          </p>
+          <ul className="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Reports by outcome">
+            {(Object.keys(OUTCOMES) as ReportOutcome[])
+              .filter((o) => data.outcomes[o] > 0)
+              .map((o) => (
+                <li key={o} className={`border-2 px-2 py-0.5 ${OUTCOMES[o].className}`} title={OUTCOMES[o].why}>
+                  {OUTCOMES[o].label}: <span className="font-semibold tabular-nums">{data.outcomes[o]}</span>
+                </li>
+              ))}
+          </ul>
+          <ol className="mt-4 divide-y-2 divide-rule text-sm">
+            {data.reports.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                <time dateTime={r.created_at} className="w-36 shrink-0 text-muted tabular-nums">
+                  {reportTime.format(new Date(r.created_at))}
+                </time>
+                <MonsterImage src={r.image_url} className="h-8 w-8" />
+                <span className="min-w-0 flex-1">
+                  <strong>{r.monster}</strong> <span className="text-muted">{r.server_name}</span>
+                  <span className="block text-muted">{OUTCOMES[r.outcome].why}</span>
+                </span>
+                <span className={`shrink-0 border-2 px-1.5 text-xs ${OUTCOMES[r.outcome].className}`}>{OUTCOMES[r.outcome].label}</span>
+                <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{r.points > 0 ? `+${r.points}` : '0'}</span>
+              </li>
+            ))}
+          </ol>
+          {data.total > data.reports.length && <p className="mt-3 text-sm text-muted">Showing your newest {data.reports.length}.</p>}
+        </div>
+      )}
+    </section>
+  );
 }

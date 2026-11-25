@@ -2,11 +2,16 @@ import { useMemo, useState } from 'react';
 import { endpoints } from '../api/endpoints';
 import type { AdminActionEntry, Player, PlayerReports } from '../api/types';
 import AlertChannelsSection from '../components/AlertChannelsSection';
+import BotMaintenanceSection from '../components/BotMaintenanceSection';
+import DeadClicksSection from '../components/DeadClicksSection';
+import DuelReviewSection from '../components/DuelReviewSection';
 import AddCharacterForm from '../components/AddCharacterForm';
+import CollapsibleSection, { openSection } from '../components/CollapsibleSection';
 import { ChevronIcon, TrashIcon } from '../components/Icons';
 import MonsterImage from '../components/MonsterImage';
 import { PageHead } from '../components/PageHead';
 import { useToast } from '../components/Toast';
+import { dayString, dayWindow } from '../lib/dates';
 import { useAsync } from '../lib/useAsync';
 
 const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -26,18 +31,24 @@ function matches(player: Player, query: string): boolean {
 export default function PlayersPage({ isAdmin = false }: { isAdmin?: boolean }) {
   const players = useAsync(endpoints.players, []);
   const history = useAsync(endpoints.admin.actions, []);
+  const flags = useAsync(endpoints.admin.flags, []);
   const [query, setQuery] = useState('');
+  const [onlyFlagged, setOnlyFlagged] = useState(false);
   const [sort, setSort] = useState<'newest' | 'reports'>('newest');
   const list = players.data;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const found = !list || !q ? list : list.filter((p) => matches(p, q));
+    const flaggedOnly = onlyFlagged && list ? list.filter((p) => p.reports_flagged) : list;
+    const found = !flaggedOnly || !q ? flaggedOnly : flaggedOnly.filter((p) => matches(p, q));
     // Most reports first; ties by the latest report. The API already sends newest first.
     return found && sort === 'reports'
       ? [...found].sort((a, b) => b.reports - a.reports || (b.last_report_at ?? '').localeCompare(a.last_report_at ?? ''))
       : found;
-  }, [list, query, sort]);
+  }, [list, query, sort, onlyFlagged]);
+  const flaggedPlayers = list?.filter((p) => p.reports_flagged).length ?? 0;
+
+  const nicks = useMemo(() => list?.map((p) => ({ id: p.id, name: nickOf(p) })) ?? [], [list]);
 
   return (
     <>
@@ -55,57 +66,141 @@ export default function PlayersPage({ isAdmin = false }: { isAdmin?: boolean }) 
             </label>
             <label className="sm:w-72">
               <span className="sr-only">Search players</span>
-              <input
-                type="search"
-                className="input"
-                placeholder="Search e-mail, Discord, character"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
+              <input type="search" className="input" placeholder="Search e-mail, Discord, character" value={query} onChange={(e) => setQuery(e.target.value)} />
             </label>
           </div>
         }
       />
 
+      {list && flags.data && (
+        <FlagSummary
+          days={flags.data.days}
+          players={flaggedPlayers}
+          deadClickPairs={flags.data.dead_click_pairs}
+          duelPairs={flags.data.duel_pairs}
+          onPlayers={() => {
+            setOnlyFlagged(true);
+            setQuery('');
+            openSection('players-list');
+          }}
+        />
+      )}
+
       {players.error && <p className="panel p-4 text-hp">{players.error.message}</p>}
       {players.loading && !list && <p className="text-muted">Loading players…</p>}
 
       {visible && (
-        <section className="panel" aria-label="Registered players">
-          <div className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_8rem_9rem] gap-4 border-b-3 border-outline px-5 py-3 text-sm text-muted md:grid">
-            <span>Account</span>
-            <span>Characters</span>
-            <span>Joined</span>
-            <span>Activity</span>
-          </div>
-          {visible.length === 0 ? (
-            <p className="px-5 py-6 text-muted">{query ? 'No player matches that search.' : 'Nobody has signed up yet.'}</p>
-          ) : (
-            <ul>
-              {visible.map((player) => (
-                <PlayerRow
-                  key={player.id}
-                  player={player}
-                  isAdmin={isAdmin}
-                  onChange={(next) => {
-                    players.setData((all) => all?.map((p) => (p.id === next.id ? next : p)) ?? all);
-                    history.reload();
-                  }}
-                  onDeleted={() => {
-                    players.setData((all) => all?.filter((p) => p.id !== player.id) ?? all);
-                    history.reload();
-                  }}
-                />
-              ))}
-            </ul>
+        <CollapsibleSection id="players-list" title="Accounts" defaultOpen summary={query ? plural(visible.length, 'match') : undefined}>
+          {onlyFlagged && (
+            <p className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+              Showing only players with many unconfirmed reports.
+              <button type="button" className="btn-quiet" onClick={() => setOnlyFlagged(false)}>
+                Show everyone
+              </button>
+            </p>
           )}
-        </section>
+          <section className="panel" aria-label="Registered players">
+            <div className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_8rem_9rem] gap-4 border-b-3 border-outline px-5 py-3 text-sm text-muted md:grid">
+              <span>Account</span>
+              <span>Characters</span>
+              <span>Joined</span>
+              <span>Activity</span>
+            </div>
+            {visible.length === 0 ? (
+              <p className="px-5 py-6 text-muted">
+              {query ? 'No player matches that search.' : onlyFlagged ? 'No player is flagged.' : 'Nobody has signed up yet.'}
+            </p>
+            ) : (
+              <ul>
+                {visible.map((player) => (
+                  <PlayerRow
+                    key={player.id}
+                    player={player}
+                    isAdmin={isAdmin}
+                    onChange={(next) => {
+                      players.setData((all) => all?.map((p) => (p.id === next.id ? next : p)) ?? all);
+                      history.reload();
+                    }}
+                    onDeleted={() => {
+                      players.setData((all) => all?.filter((p) => p.id !== player.id) ?? all);
+                      history.reload();
+                    }}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+        </CollapsibleSection>
       )}
 
-      {isAdmin && <AlertChannelsSection onChange={history.reload} />}
+      {isAdmin && (
+        <CollapsibleSection id="alert-channels" title="Discord alert channels">
+          <AlertChannelsSection onChange={history.reload} />
+        </CollapsibleSection>
+      )}
 
-      {history.data && <AdminHistory actions={history.data} />}
+      {isAdmin && (
+        <CollapsibleSection id="bot-maintenance" title="Bot maintenance notice">
+          <BotMaintenanceSection onPosted={history.reload} />
+        </CollapsibleSection>
+      )}
+
+      <CollapsibleSection id="duel-review" title="Duels">
+        <DuelReviewSection players={nicks} />
+      </CollapsibleSection>
+
+      <CollapsibleSection id="dead-clicks" title="Dead clicks">
+        <DeadClicksSection players={nicks} />
+      </CollapsibleSection>
+
+      <CollapsibleSection id="admin-history" title="Admin history">
+        {history.error && <p className="panel p-4 text-hp">{history.error.message}</p>}
+        {history.data ? <AdminHistory actions={history.data} /> : !history.error && <p className="text-muted">Loading…</p>}
+      </CollapsibleSection>
     </>
+  );
+}
+
+/**
+ * What needs a look, at the top of the tab: players whose reports nobody confirms, and the
+ * flagged Dead-click and duel pairs of the last days. Each opens the section with the details.
+ */
+function FlagSummary({
+  days,
+  players,
+  deadClickPairs,
+  duelPairs,
+  onPlayers,
+}: {
+  days: number;
+  players: number;
+  deadClickPairs: number;
+  duelPairs: number;
+  onPlayers: () => void;
+}) {
+  const items = [
+    { count: players, label: plural(players, 'player') + ' with many unconfirmed reports', onClick: onPlayers },
+    { count: deadClickPairs, label: plural(deadClickPairs, 'flagged Dead click pair'), onClick: () => openSection('dead-clicks') },
+    { count: duelPairs, label: plural(duelPairs, 'flagged duel pair'), onClick: () => openSection('duel-review') },
+  ].filter((item) => item.count > 0);
+
+  if (items.length === 0) {
+    return <p className="mb-6 text-sm text-muted">Nothing flagged: no player with many unconfirmed reports, no suspicious pairs in the last {days} days.</p>;
+  }
+  return (
+    <section className="mb-6 border-3 border-hp p-4" aria-label="Needs a look">
+      <h2 className="text-base font-semibold text-hp">Needs a look</h2>
+      <p className="mt-1 text-sm text-muted">Pairs count the last {days} days; open one to see the details.</p>
+      <ul className="mt-3 flex flex-wrap gap-2">
+        {items.map((item) => (
+          <li key={item.label}>
+            <button type="button" className="btn" onClick={item.onClick}>
+              {item.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -122,40 +217,53 @@ const ACTION_LABELS: Record<AdminActionEntry['action'], string> = {
   delete_report: 'deleted a report of',
   set_alert_channel: 'chose an alert channel on',
   reset_alert_channel: 'went back to the named alert channel on',
+  bot_maintenance: 'posted the bot maintenance notice on',
+  bot_back_online: 'posted that the bot is back on',
 };
 
 const timeFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 /** Who did what to which account, newest first (the last 50). */
 function AdminHistory({ actions }: { actions: AdminActionEntry[] }) {
-  return (
-    <section className="mt-10" aria-labelledby="admin-history">
-      <h2 id="admin-history" className="mb-4">
-        Admin history
-      </h2>
-      {actions.length === 0 ? (
-        <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">No admin actions yet.</p>
-      ) : (
-        <ol className="panel divide-y-2 divide-rule">
-          {actions.map((a) => (
-            <li key={a.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-5 py-2.5 text-sm">
-              <time dateTime={a.created_at} className="w-32 shrink-0 text-muted tabular-nums">
-                {timeFormat.format(new Date(a.created_at))}
-              </time>
-              <span className="min-w-0">
-                <strong>{a.admin}</strong> {ACTION_LABELS[a.action] ?? a.action} <strong>{a.player}</strong>
-                {a.details && <span className="text-muted">: {a.details}</span>}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
+  return actions.length === 0 ? (
+    <p className="border-3 border-dashed border-rule px-4 py-6 text-sm text-muted">No admin actions yet.</p>
+  ) : (
+    <ol className="panel divide-y-2 divide-rule">
+      {actions.map((a) => (
+        <li key={a.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-5 py-2.5 text-sm">
+          <time dateTime={a.created_at} className="w-32 shrink-0 text-muted tabular-nums">
+            {timeFormat.format(new Date(a.created_at))}
+          </time>
+          <span className="min-w-0">
+            <strong>{a.admin}</strong> {ACTION_LABELS[a.action] ?? a.action} <strong>{a.player}</strong>
+            {a.details && <span className="text-muted">: {a.details}</span>}
+            {a.reason && <span className="block text-ink-2">Reason: {a.reason}</span>}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
+}
+
+/**
+ * Asks why, for the admin history. Null when the admin cancels (the action is not done);
+ * an empty answer is no reason.
+ */
+function askReason(question: string): string | null {
+  const answer = window.prompt(`${question}\n\nReason (optional, kept in the admin history):`, '');
+  return answer === null ? null : answer.trim();
 }
 
 function nameOf(player: Player): string {
   return player.email ?? player.discord_username ?? `account #${player.id}`;
+}
+
+/** The nickname the duel review uses (backend PlayerNames): Discord name, else characters. */
+function nickOf(player: Pick<Player, 'id' | 'discord_username' | 'characters'>): string {
+  if (player.discord_username) return player.discord_username;
+  const names = [...player.characters.map((c) => c.name)].sort((a, b) => a.localeCompare(b));
+  if (names.length > 0) return names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
+  return `Player #${player.id}`;
 }
 
 type RowProps = {
@@ -180,6 +288,11 @@ function PlayerRow({ player, isAdmin, onChange, onDeleted }: RowProps) {
             {player.is_admin && <span className="shrink-0 border-2 border-accent px-1.5 text-xs text-accent-text">Admin</span>}
             {player.is_moderator && <span className="shrink-0 border-2 border-ink-2 px-1.5 text-xs text-ink-2">Moderator</span>}
             {player.blocked && <span className="shrink-0 border-2 border-hp px-1.5 text-xs text-hp">Blocked</span>}
+            {player.reports_flagged && (
+              <span className="shrink-0 border-2 border-hp px-1.5 text-xs text-hp" title="At least half of their ended reports were never confirmed">
+                Unconfirmed reports
+              </span>
+            )}
           </p>
           <p className="truncate text-sm">
             {player.discord_linked ? (
@@ -191,11 +304,7 @@ function PlayerRow({ player, isAdmin, onChange, onDeleted }: RowProps) {
         </div>
         <p className="min-w-0 text-sm text-ink-2">
           <span className="text-muted md:hidden">Characters: </span>
-          {player.characters.length === 0 ? (
-            <span className="text-muted">None</span>
-          ) : (
-            player.characters.map((c) => `${c.name} (${c.server_name})`).join(', ')
-          )}
+          {player.characters.length === 0 ? <span className="text-muted">None</span> : player.characters.map((c) => `${c.name} (${c.server_name})`).join(', ')}
         </p>
         <p className="text-sm tabular-nums">
           <span className="text-muted md:hidden">Joined </span>
@@ -203,6 +312,7 @@ function PlayerRow({ player, isAdmin, onChange, onDeleted }: RowProps) {
         </p>
         <div className="text-sm tabular-nums">
           <p>{plural(player.reports, 'report')}</p>
+          {player.unconfirmed_reports > 0 && <p className={player.reports_flagged ? 'text-hp' : 'text-muted'}>{player.unconfirmed_reports} unconfirmed</p>}
           {player.last_report_at && <p className="text-muted">last {formatDate(player.last_report_at)}</p>}
           <p>{player.bestiary_marks} in bestiary</p>
           <div className="-ml-2 flex flex-wrap">
@@ -235,9 +345,17 @@ const STATUS_CLASSES: Record<PlayerReports['recent'][number]['status'], string> 
   EXPIRED: 'border-rule text-muted',
 };
 
-/** How often and what this player has reported: totals, outcomes, worlds, monsters and the newest reports. */
+/**
+ * How often and what this player has reported: totals, outcomes, worlds, monsters and the newest
+ * reports, all time or in the dates picked (both days included).
+ */
 function ReportsPanel({ id, player, onChange }: { id: string; player: Player; onChange: (player: Player) => void }) {
-  const reports = useAsync(() => endpoints.admin.reports(player.id), [player.id]);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const range = dayWindow(from, to);
+  const windowed = from !== '' || to !== '';
+  const today = dayString(new Date());
+  const reports = useAsync(() => (range ? endpoints.admin.reports(player.id, range) : Promise.resolve(null)), [player.id, from, to]);
   const toast = useToast();
   const [deleting, setDeleting] = useState<string | null>(null);
   const name = nameOf(player);
@@ -245,10 +363,11 @@ function ReportsPanel({ id, player, onChange }: { id: string; player: Player; on
 
   async function deleteReport(report: PlayerReports['recent'][number]) {
     const what = `${report.monster} on ${report.server_name} (${timeFormat.format(new Date(report.created_at))})`;
-    if (!window.confirm(`Delete the report of ${what}? It leaves the stats and its alert is deleted on Discord. This cannot be undone.`)) return;
+    const reason = askReason(`Delete the report of ${what}? It leaves the stats and its alert is deleted on Discord. This cannot be undone.`);
+    if (reason === null) return;
     setDeleting(report.id);
     try {
-      const { user } = await endpoints.admin.deleteReport(report.id);
+      const { user } = await endpoints.admin.deleteReport(report.id, reason || undefined);
       toast(`Deleted the report of ${what}.`, 'success');
       if (user) onChange(user);
       reports.reload();
@@ -261,19 +380,53 @@ function ReportsPanel({ id, player, onChange }: { id: string; player: Player; on
 
   return (
     <section id={id} aria-label={`Reports of ${name}`} className="space-y-6 border-t-2 border-dashed border-rule bg-paper px-5 py-5">
+      <form className="flex flex-wrap items-end gap-3" aria-label={`Dates of ${name}'s reports`} onSubmit={(e) => e.preventDefault()}>
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">From</span>
+          <input type="date" className="input" value={from} max={to || today} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">To</span>
+          <input type="date" className="input" value={to} min={from || undefined} max={today} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        {windowed && (
+          <button
+            type="button"
+            className="btn-quiet"
+            onClick={() => {
+              setFrom('');
+              setTo('');
+            }}
+          >
+            All time
+          </button>
+        )}
+      </form>
+      {!range && <p className="text-sm text-hp">Pick a start date on or before the end date.</p>}
       {reports.error && <p className="text-sm text-hp">{reports.error.message}</p>}
       {reports.loading && !data && <p className="text-sm text-muted">Loading reports…</p>}
-      {data && data.total === 0 && <p className="text-sm text-muted">{name} has not reported any Warden yet.</p>}
+      {data && data.total === 0 && (
+        <p className="text-sm text-muted">
+          {name} has not reported any Warden {windowed ? 'in these dates' : 'yet'}.
+        </p>
+      )}
       {data && data.total > 0 && (
         <>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+          {data.flagged && (
+            <p className="border-2 border-hp px-3 py-2 text-sm text-hp">
+              At least half of {name}&apos;s ended reports
+              {windowed ? ' in these dates' : ''} were never confirmed: nobody clicked Dead or OMW and nobody marked the monster killed. They may be made up.
+            </p>
+          )}
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-7">
             {[
-              ['All time', data.total],
+              [windowed ? 'In these dates' : 'All time', data.total],
               ['Last 7 days', data.last_7_days],
               ['Last 30 days', data.last_30_days],
               ['Killed', data.by_status.killed],
               ['Expired', data.by_status.expired],
-              ['Active now', data.by_status.active],
+              [windowed ? 'Still active' : 'Active now', data.by_status.active],
+              ['Unconfirmed', data.unconfirmed],
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="label">{label}</dt>
@@ -283,7 +436,7 @@ function ReportsPanel({ id, player, onChange }: { id: string; player: Player; on
           </dl>
           {data.first_report_at && data.last_report_at && (
             <p className="text-sm text-muted">
-              First report {formatDate(data.first_report_at)}, last {formatDate(data.last_report_at)}.
+              {windowed ? 'In these dates: first' : 'First'} report {formatDate(data.first_report_at)}, last {formatDate(data.last_report_at)}.
             </p>
           )}
 
@@ -358,6 +511,7 @@ function ManagePanel({ id, player, isAdmin, onChange, onDeleted }: RowProps & { 
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const name = nameOf(player);
 
@@ -391,7 +545,7 @@ function ManagePanel({ id, player, isAdmin, onChange, onDeleted }: RowProps & { 
   async function deleteAccount() {
     setBusy(true);
     try {
-      await endpoints.admin.deleteUser(player.id);
+      await endpoints.admin.deleteUser(player.id, deleteReason.trim() || undefined);
       toast(`Deleted ${name}.`, 'success');
       onDeleted();
     } catch (err) {
@@ -442,13 +596,7 @@ function ManagePanel({ id, player, isAdmin, onChange, onDeleted }: RowProps & { 
           create={async (characterName, server) => {
             const next = await endpoints.admin.addCharacter(player.id, characterName, server);
             onChange(next);
-            return (
-              next.characters.find((c) => c.name.toLowerCase() === characterName.toLowerCase()) ?? {
-                id: '',
-                name: characterName,
-                server_name: server,
-              }
-            );
+            return next.characters.find((c) => c.name.toLowerCase() === characterName.toLowerCase()) ?? { id: '', name: characterName, server_name: server };
           }}
           onAdded={() => undefined}
         />
@@ -465,12 +613,23 @@ function ManagePanel({ id, player, isAdmin, onChange, onDeleted }: RowProps & { 
                 type="button"
                 className="btn"
                 disabled={busy}
-                onClick={() => run(() => endpoints.admin.unblock(player.id), `Unblocked ${name}.`)}
+                onClick={() => {
+                  const reason = askReason(`Unblock ${name}?`);
+                  if (reason !== null) void run(() => endpoints.admin.unblock(player.id, reason || undefined), `Unblocked ${name}.`);
+                }}
               >
                 Unblock
               </button>
             ) : (
-              <button type="button" className="btn" disabled={busy} onClick={() => run(() => endpoints.admin.block(player.id), `Blocked ${name}.`)}>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => {
+                  const reason = askReason(`Block ${name}? They can no longer log in, report or be pinged.`);
+                  if (reason !== null) void run(() => endpoints.admin.block(player.id, reason || undefined), `Blocked ${name}.`);
+                }}
+              >
                 Block
               </button>
             )}
@@ -495,8 +654,9 @@ function ManagePanel({ id, player, isAdmin, onChange, onDeleted }: RowProps & { 
                   disabled={busy || player.blocked}
                   title={player.blocked ? 'Unblock first' : undefined}
                   onClick={() =>
-                    window.confirm(`Make ${name} a moderator? They get the Players tab: report stats, deleting reports, blocking players and managing characters.`) &&
-                    run(() => endpoints.admin.grantModerator(player.id), `${name} is now a moderator.`)
+                    window.confirm(
+                      `Make ${name} a moderator? They get the Players tab: report stats, deleting reports, blocking players and managing characters.`,
+                    ) && run(() => endpoints.admin.grantModerator(player.id), `${name} is now a moderator.`)
                   }
                 >
                   Make moderator
@@ -532,6 +692,10 @@ function ManagePanel({ id, player, isAdmin, onChange, onDeleted }: RowProps & { 
                 <p className="text-sm">
                   Delete <strong>{name}</strong> with their characters and bestiary? Their reports stay in the stats. This cannot be undone.
                 </p>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-muted">Reason (optional, kept in the admin history)</span>
+                  <input className="input" maxLength={255} value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} />
+                </label>
                 <div className="flex justify-end gap-2">
                   <button type="button" className="btn-quiet" disabled={busy} onClick={() => setConfirmDelete(false)}>
                     Cancel

@@ -524,6 +524,17 @@ describe('Notifier with the bot on several servers', () => {
     expect(a.send).toHaveBeenCalledOnce();
     expect(b.send).toHaveBeenCalledOnce();
   });
+
+  it('broadcasts a message to the alert channels of every server, past one that refuses it', async () => {
+    const { notifier, a, b } = twoServers();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    a.send.mockRejectedValueOnce(new Error('Missing Access'));
+
+    const posted = await notifier.broadcast({ content: 'notice' }, 'maintenance');
+
+    expect(b.send).toHaveBeenCalledWith({ content: 'notice' });
+    expect(posted).toBe(1);
+  });
 });
 
 describe('Notifier daily summary', () => {

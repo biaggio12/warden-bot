@@ -4,6 +4,7 @@ namespace App\Scheduler;
 
 use App\Message\ExpireWardenSpawns;
 use App\Message\PurgeLoginFailures;
+use App\Message\ResolveDuels;
 use Symfony\Component\Scheduler\Attribute\AsSchedule;
 use Symfony\Component\Scheduler\RecurringMessage;
 use Symfony\Component\Scheduler\Schedule;
@@ -26,6 +27,7 @@ final class WardenTtlSchedule implements ScheduleProviderInterface
             ->stateful($this->cache)
             ->processOnlyLastMissedRun(true)
             ->add(RecurringMessage::every('60 seconds', new ExpireWardenSpawns()))
+            ->add(RecurringMessage::every('15 seconds', new ResolveDuels()))
             ->add(RecurringMessage::every('1 hour', new PurgeLoginFailures()));
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Http\DateWindow;
 use App\Http\Json;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
@@ -20,16 +21,18 @@ final readonly class SpawnHistory
     public function __construct(
         private Connection $db,
         private ClockInterface $clock,
+        private PlayerNames $names,
     ) {
     }
 
     /**
      * One page of reports, newest first; `$before` is the id of the last report of the
-     * previous page (ids are UUIDv7, so they sort by time).
+     * previous page (ids are UUIDv7, so they sort by time). `$reporterId` keeps one player's
+     * reports, `$window` those made in its dates.
      *
      * @return array{warden_spawns: list<array<string, mixed>>, next_before: ?string}
      */
-    public function page(?string $serverName, ?int $monsterId, ?string $before, int $limit = self::PAGE): array
+    public function page(?string $serverName, ?int $monsterId, ?string $before, ?int $reporterId = null, ?DateWindow $window = null, int $limit = self::PAGE): array
     {
         $where = ['1 = 1'];
         $params = ['now' => $this->now()];
@@ -44,6 +47,15 @@ final readonly class SpawnHistory
         if (null !== $before) {
             $where[] = 's.id < :before';
             $params['before'] = $before;
+        }
+        if (null !== $reporterId) {
+            $where[] = 's.reported_by_user_id = :reporter';
+            $params['reporter'] = $reporterId;
+        }
+        if (null !== $window) {
+            [$windowWhere, $windowParams] = $window->sql('s.created_at');
+            $where = [...$where, ...$windowWhere];
+            $params += $windowParams;
         }
 
         $rows = $this->db->fetchAllAssociative(
@@ -86,6 +98,25 @@ final readonly class SpawnHistory
             ], $rows),
             'next_before' => $more ? (string) end($rows)['id'] : null,
         ];
+    }
+
+    /**
+     * Every player with at least one report, by name.
+     *
+     * @return list<array{id: int, name: string}>
+     */
+    public function reporters(): array
+    {
+        $ids = $this->db->fetchFirstColumn(
+            'SELECT DISTINCT s.reported_by_user_id FROM warden_spawns s JOIN users u ON u.id = s.reported_by_user_id',
+        );
+        $list = [];
+        foreach ($this->names->of($ids) as $id => $name) {
+            $list[] = ['id' => $id, 'name' => $name];
+        }
+        usort($list, static fn (array $a, array $b): int => strcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id']);
+
+        return $list;
     }
 
     /**

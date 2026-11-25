@@ -19,6 +19,7 @@ import {
   withPresence,
   unixSeconds,
   killedAlert,
+  finishedEmbed,
 } from '../src/messages.js';
 import { postedAlert, spawnFixture } from './fixtures.js';
 
@@ -48,7 +49,8 @@ describe('buildSpawnMessage', () => {
     expect(embed.fields.map((f: { name: string }) => f.name)).toEqual(['Class', 'Disappears', 'Reported by', 'Location']);
     expect(fields).toContain('Venore — Lair \\\\*-2\\\\*'); // city + markdown-escaped location
     expect(fields).not.toContain('Additional info');
-    expect(fields).toContain(`<t:${unixSeconds('2026-10-29T12:07:00Z')}:R>`);
+    const unix = unixSeconds('2026-10-29T12:07:00Z');
+    expect(embed.fields.find((f: { name: string }) => f.name === 'Disappears').value).toBe(`<t:${unix}:R> (<t:${unix}:t>)`);
     expect(button).toMatchObject({ type: ComponentType.Button, label: 'Hit / Completed ✅', style: ButtonStyle.Success });
     expect(button.disabled).toBeFalsy();
     expect(parseKillCustomId(button.custom_id)).toEqual({
@@ -57,6 +59,18 @@ describe('buildSpawnMessage', () => {
       monsterId: 142,
       serverName: 'Monza',
     });
+  });
+
+  it('an expired alert shows only the clock time, never "x minutes ago"', () => {
+    const { embed } = render({ expired: true });
+    expect(embed.fields.find((f: { name: string }) => f.name === 'Expired').value).toBe(`<t:${unixSeconds('2026-10-29T12:07:00Z')}:t>`);
+    expect(embed.fields.some((f: { name: string }) => f.name === 'Disappears')).toBe(false);
+  });
+
+  it('finishedEmbed turns a leftover "Disappears" countdown into a fixed "Expired" time', () => {
+    const unix = 1_800_000_000;
+    const embed = finishedEmbed({ fields: [{ name: 'Disappears', value: `<t:${unix}:R> (<t:${unix}:t>)`, inline: true }] }).toJSON();
+    expect(embed.fields).toEqual([{ name: 'Expired', value: `<t:${unix}:t>`, inline: true }]);
   });
 
   it('shows the creature GIF from Tibiopedia as thumbnail', () => {

@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Http\Json;
 use App\Security\AdminPolicy;
 use Doctrine\DBAL\Connection;
+use Psr\Clock\ClockInterface;
 
 /**
  * Every registered account for the admin's Players list: who they are, when they
@@ -15,6 +16,7 @@ final readonly class UserDirectory
     public function __construct(
         private Connection $db,
         private AdminPolicy $admins,
+        private ClockInterface $clock,
     ) {
     }
 
@@ -27,20 +29,23 @@ final readonly class UserDirectory
     /**
      * Newest accounts first.
      *
-     * @return list<array{id: int, email: ?string, discord_username: ?string, discord_linked: bool, is_admin: bool, is_moderator: bool, blocked: bool, created_at: string, characters: list<array{id: string, name: string, server_name: string}>, reports: int, last_report_at: ?string, bestiary_marks: int}>
+     * @return list<array{id: int, email: ?string, discord_username: ?string, discord_linked: bool, is_admin: bool, is_moderator: bool, blocked: bool, created_at: string, characters: list<array{id: string, name: string, server_name: string}>, reports: int, unconfirmed_reports: int, reports_flagged: bool, last_report_at: ?string, bestiary_marks: int}>
      */
     public function all(?int $only = null): array
     {
         $rows = $this->db->fetchAllAssociative(
-            'SELECT u.id, u.email, u.discord_username, u.discord_user_id, u.created_at, u.blocked_at, u.moderator,
+            "SELECT u.id, u.email, u.discord_username, u.discord_user_id, u.created_at, u.blocked_at, u.moderator,
                     (SELECT COUNT(*) FROM warden_spawns s WHERE s.reported_by_user_id = u.id) AS reports,
                     (SELECT MAX(s.created_at) FROM warden_spawns s WHERE s.reported_by_user_id = u.id) AS last_report_at,
+                    (SELECT COUNT(*) FROM warden_spawns s WHERE s.reported_by_user_id = u.id
+                      AND (s.status = 'KILLED' OR s.status = 'EXPIRED' OR s.expires_at <= :now)) AS ended_reports,
+                    (SELECT COUNT(*) FROM warden_spawns s WHERE s.reported_by_user_id = u.id AND ".ReporterStats::unconfirmedSql().") AS unconfirmed_reports,
                     (SELECT COUNT(*) FROM character_killed_monsters k JOIN characters c ON c.id = k.character_id
                       WHERE c.user_id = u.id) AS bestiary_marks
              FROM users u
              WHERE CAST(:only AS INT) IS NULL OR u.id = :only
-             ORDER BY u.created_at DESC, u.id DESC',
-            ['only' => $only],
+             ORDER BY u.created_at DESC, u.id DESC",
+            ['only' => $only, 'now' => $this->clock->now()->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s')],
         );
         $characters = [];
         foreach ($this->db->fetchAllAssociative('SELECT id, user_id, name, server_name FROM characters ORDER BY name') as $c) {
@@ -58,6 +63,8 @@ final readonly class UserDirectory
             'created_at' => self::iso((string) $r['created_at']),
             'characters' => $characters[(int) $r['id']] ?? [],
             'reports' => (int) $r['reports'],
+            'unconfirmed_reports' => (int) $r['unconfirmed_reports'],
+            'reports_flagged' => ReporterStats::flagged((int) $r['ended_reports'], (int) $r['unconfirmed_reports']),
             'last_report_at' => null === $r['last_report_at'] ? null : self::iso((string) $r['last_report_at']),
             'bestiary_marks' => (int) $r['bestiary_marks'],
         ], $rows);

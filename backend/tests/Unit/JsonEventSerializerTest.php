@@ -2,6 +2,8 @@
 
 namespace App\Tests\Unit;
 
+use App\Message\BotBackOnlineEvent;
+use App\Message\BotMaintenanceEvent;
 use App\Message\WardenDeletedEvent;
 use App\Message\WardenExpiredEvent;
 use App\Message\WardenKilledEvent;
@@ -79,6 +81,31 @@ final class JsonEventSerializerTest extends TestCase
         $encoded = $serializer->encode(new Envelope($event));
 
         self::assertSame(['event' => 'warden.deleted', 'spawn_id' => $event->spawnId, 'server_name' => 'Monza'], ['event' => json_decode($encoded['body'], true)['event']] + json_decode($encoded['body'], true)['data']);
+        self::assertEquals($event, $serializer->decode($encoded)->getMessage());
+    }
+
+    public function testMaintenanceEventRoundTrip(): void
+    {
+        $serializer = new JsonEventSerializer();
+        $event = new BotMaintenanceEvent(new \DateTimeImmutable('2026-11-19T20:15:00Z'), 'New: element sensitivities', 'Admin');
+
+        $encoded = $serializer->encode(new Envelope($event));
+        $body = json_decode($encoded['body'], true);
+
+        self::assertSame('bot.maintenance', $body['event']);
+        self::assertSame(['back_at' => '2026-11-19T20:15:00Z', 'note' => 'New: element sensitivities', 'requested_by' => 'Admin'], $body['data']);
+        self::assertEquals($event, $serializer->decode($encoded)->getMessage());
+    }
+
+    public function testBackOnlineEventRoundTrip(): void
+    {
+        $serializer = new JsonEventSerializer();
+        $event = new BotBackOnlineEvent(null, 'Admin');
+
+        $encoded = $serializer->encode(new Envelope($event));
+        $body = json_decode($encoded['body'], true);
+
+        self::assertSame(['bot.back_online', ['note' => null, 'requested_by' => 'Admin']], [$body['event'], $body['data']]);
         self::assertEquals($event, $serializer->decode($encoded)->getMessage());
     }
 }
