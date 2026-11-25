@@ -59,6 +59,39 @@ final class HistoryApiTest extends ApiTestCase
         self::assertResponseStatusCodeSame(400);
     }
 
+    public function testFiltersByReporterAndDates(): void
+    {
+        $me = $this->createUser('me@example.com');
+        $me->linkDiscord('555000', 'meDiscord');
+        $other = $this->createUser('other@example.com');
+        $this->createCharacter($other, 'Other Knight');
+        $this->createUser('quiet@example.com'); // never reported: not in the filter
+        $mineOld = $this->spawn($me, 'Dragon', '-10 days');
+        $mineNew = $this->spawn($me, 'Dragon', '-1 day');
+        $theirs = $this->spawn($other, 'Hydra', '-2 days');
+        $token = $this->tokenFor($me);
+
+        $reporters = $this->requestJson('GET', '/api/v1/warden-spawns/reporters', token: $token);
+        self::assertResponseIsSuccessful();
+        self::assertSame([['id' => $me->getId(), 'name' => 'meDiscord'], ['id' => $other->getId(), 'name' => 'Other Knight']], $reporters['reporters']);
+
+        $mine = $this->requestJson('GET', '/api/v1/warden-spawns/history?reporter_id='.$me->getId(), token: $token);
+        self::assertSame([$mineNew->getId()->toRfc4122(), $mineOld->getId()->toRfc4122()], array_column($mine['warden_spawns'], 'id'));
+
+        $from = urlencode((new \DateTimeImmutable('-5 days'))->format(\DATE_ATOM));
+        $until = urlencode((new \DateTimeImmutable('-36 hours'))->format(\DATE_ATOM));
+        $window = $this->requestJson('GET', "/api/v1/warden-spawns/history?from=$from&until=$until", token: $token);
+        self::assertSame([$theirs->getId()->toRfc4122()], array_column($window['warden_spawns'], 'id'));
+
+        $since = $this->requestJson('GET', "/api/v1/warden-spawns/history?reporter_id={$me->getId()}&from=$from", token: $token);
+        self::assertSame([$mineNew->getId()->toRfc4122()], array_column($since['warden_spawns'], 'id'));
+
+        $this->requestJson('GET', "/api/v1/warden-spawns/history?from=$until&until=$from", token: $token);
+        self::assertResponseStatusCodeSame(400);
+        $this->requestJson('GET', '/api/v1/warden-spawns/history?from=yesterday-ish', token: $token);
+        self::assertResponseStatusCodeSame(400);
+    }
+
     public function testPagesWithTheIdOfTheLastReport(): void
     {
         $me = $this->createUser();

@@ -5,7 +5,7 @@ import { endpoints } from '../api/endpoints';
 import type { Stats } from '../api/types';
 import StatsPage from './StatsPage';
 
-vi.mock('../api/endpoints', () => ({ endpoints: { stats: vi.fn() } }));
+vi.mock('../api/endpoints', () => ({ endpoints: { stats: vi.fn(), myReports: vi.fn() } }));
 
 const stats: Stats = {
   period: '30d',
@@ -33,6 +33,16 @@ const stats: Stats = {
 
 describe('StatsPage', () => {
   beforeEach(() => {
+    vi.mocked(endpoints.myReports).mockResolvedValue({
+      period: '30d',
+      points: 10,
+      outcomes: { counted: 1, waiting: 0, unconfirmed: 1, duplicate: 0 },
+      total: 2,
+      reports: [
+        { id: 'a', monster: 'Hard Warden', image_url: null, server_name: 'Monza', city: null, location: 'Cave', created_at: '2026-11-19T10:00:00Z', outcome: 'counted', points: 10 },
+        { id: 'b', monster: 'Easy Warden', image_url: null, server_name: 'Monza', city: null, location: 'Hill', created_at: '2026-11-19T09:00:00Z', outcome: 'unconfirmed', points: 0 },
+      ],
+    });
     localStorage.clear();
     vi.mocked(endpoints.stats).mockResolvedValue(stats);
   });
@@ -77,5 +87,18 @@ describe('StatsPage', () => {
 
     expect(endpoints.stats).toHaveBeenLastCalledWith('7d');
     expect(localStorage.getItem('warden-tracker.stats-period')).toBe('7d');
+  });
+
+  it('explains which of my reports earned points and why', async () => {
+    render(<StatsPage />);
+
+    const section = await screen.findByRole('region', { name: 'Your reports and points' });
+    expect(await within(section).findByText('10 points from 2 reports, 30 days. Duel stakes are not included.')).toBeInTheDocument();
+    const rows = within(section).getAllByRole('listitem').filter((li) => li.closest('ol'));
+    expect(rows[0]).toHaveTextContent('Hard Warden');
+    expect(rows[0]).toHaveTextContent('Counted');
+    expect(rows[0]).toHaveTextContent('+10');
+    expect(rows[1]).toHaveTextContent('It ran out and nobody confirmed it.');
+    expect(within(section).getByRole('list', { name: 'Reports by outcome' })).toHaveTextContent('Counted: 1Not confirmed: 1');
   });
 });

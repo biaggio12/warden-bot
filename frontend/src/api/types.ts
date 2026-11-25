@@ -59,6 +59,10 @@ export interface Player {
   created_at: string;
   characters: Character[];
   reports: number;
+  /** Reports that ended without anyone confirming them (the rules of the points). */
+  unconfirmed_reports: number;
+  /** Many ended reports, at least half never confirmed: maybe made-up Wardens. */
+  reports_flagged: boolean;
   last_report_at: string | null;
   bestiary_marks: number;
 }
@@ -71,6 +75,9 @@ export interface PlayerReports {
   first_report_at: string | null;
   last_report_at: string | null;
   by_status: { active: number; killed: number; expired: number };
+  /** Ended without anyone confirming them. */
+  unconfirmed: number;
+  flagged: boolean;
   worlds: { server_name: string; reports: number }[];
   /** The 10 most reported. */
   monsters: { name: string; image_url: string | null; reports: number }[];
@@ -108,6 +115,8 @@ export interface AdminActionEntry {
     | 'bot_maintenance'
     | 'bot_back_online';
   details: string | null;
+  /** Why the admin did it, when they said. */
+  reason: string | null;
   created_at: string;
 }
 
@@ -243,4 +252,42 @@ export interface DuelReport {
   duplicate: boolean;
   counted: boolean;
   points: number;
+}
+
+/** One player closing another's reports with [Dead] (staff only). */
+export interface DeadClickPair {
+  closer: { id: number; name: string };
+  reporter: { id: number; name: string };
+  closures: number;
+  /** Closed within 2 minutes of the report. */
+  quick: number;
+  median_minutes: number;
+  /** Of the reporter's reports closed by others, the share this player closed. */
+  share: number;
+  last_at: string;
+  flags: ('frequent' | 'quick' | 'one_closer')[];
+}
+
+/** Why one of my reports earned points, or not (see the backend's ReportScoring::explain). */
+export type ReportOutcome = 'counted' | 'waiting' | 'unconfirmed' | 'duplicate';
+
+export interface MyReports {
+  period: StatsPeriod;
+  /** Points from reports in the period (duel stakes not included). */
+  points: number;
+  outcomes: Record<ReportOutcome, number>;
+  /** The newest 50. */
+  reports: {
+    id: string;
+    monster: string;
+    image_url: string | null;
+    server_name: string;
+    city: string | null;
+    location: string;
+    created_at: string;
+    outcome: ReportOutcome;
+    points: number;
+  }[];
+  /** Reports in the period. */
+  total: number;
 }

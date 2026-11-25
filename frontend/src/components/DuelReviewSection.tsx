@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { endpoints } from '../api/endpoints';
 import type { AdminDuel, DuelPair, DuelReport } from '../api/types';
+import { dayString, midnight } from '../lib/dates';
 import { useAsync } from '../lib/useAsync';
 import { ChevronIcon } from './Icons';
 
@@ -24,17 +25,6 @@ const STATUS_LABELS: Record<AdminDuel['status'], string> = {
  * Staff: who challenged whom, which pairs keep meeting (and who wins the points), and for each
  * duel the reports that scored and who confirmed them, to spot points being farmed.
  */
-/** yyyy-mm-dd of a local date, as <input type="date"> wants it. */
-function dayString(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-/** Local midnight of a yyyy-mm-dd day, plus `days`, as an ISO date-time for the API. */
-function midnight(day: string, days = 0): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(y!, m! - 1, d! + days).toISOString();
-}
-
 export default function DuelReviewSection({ players = [] }: { players?: { id: number; name: string }[] }) {
   const today = dayString(new Date());
   const [from, setFrom] = useState(() => dayString(new Date(Date.now() - 29 * 86_400_000)));
@@ -49,10 +39,9 @@ export default function DuelReviewSection({ players = [] }: { players?: { id: nu
   const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <section className="mt-10 space-y-6" aria-labelledby="duel-review">
+    <div className="space-y-6">
       <div>
-        <h2 id="duel-review">Duels</h2>
-        <p className="mt-1 text-sm text-muted">
+        <p className="text-sm text-muted">
           Who challenged whom, in the dates you pick (both days included). Pairs that keep meeting, or where one side always wins the
           stake, are flagged; open a duel to see which reports scored and who confirmed them.
         </p>
@@ -91,7 +80,7 @@ export default function DuelReviewSection({ players = [] }: { players?: { id: nu
           {data.data.truncated && <p className="text-sm text-muted">Showing the newest {data.data.duels.length}; pick a shorter window to see the rest.</p>}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

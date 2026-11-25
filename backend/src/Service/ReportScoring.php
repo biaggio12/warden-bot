@@ -94,8 +94,6 @@ final readonly class ReportScoring
         $params = [
             'from' => $from->format('Y-m-d H:i:s'),
             'until' => $until->format('Y-m-d H:i:s'),
-            'slack' => self::KILL_CONFIRM_SLACK_MINUTES,
-            'dup' => WardenSpawn::MAX_TTL_MINUTES,
         ];
         $types = [];
         $onlyUsers = '';
@@ -112,7 +110,23 @@ final readonly class ReportScoring
              JOIN monsters m ON m.id = s.monster_id
              WHERE s.created_at >= :from AND s.created_at < :until
                $onlyUsers
-               AND (
+               AND ".self::confirmedSql()."
+               AND NOT ".self::duplicateSql()."
+             $tail",
+            $params,
+            $types,
+        );
+
+    }
+
+    /**
+     * SQL condition: the report `s` is confirmed (see the class doc). `u` must be its reporter
+     * in the users table. Also used by the admins' report stats, to see who reports Wardens
+     * nobody confirms.
+     */
+    public static function confirmedSql(): string
+    {
+        return \sprintf("(
                    s.status = 'KILLED'
                    OR EXISTS (
                        SELECT 1 FROM warden_spawn_presence p
@@ -126,22 +140,73 @@ final readonly class ReportScoring
                          AND LOWER(c.server_name) = LOWER(s.server_name)
                          AND c.user_id <> s.reported_by_user_id
                          AND k.killed_at >= s.created_at
-                         AND k.killed_at <= s.expires_at + make_interval(mins => CAST(:slack AS int))
+                         AND k.killed_at <= s.expires_at + make_interval(mins => %d)
                    )
-               )
-               AND NOT EXISTS (
+               )", self::KILL_CONFIRM_SLACK_MINUTES);
+    }
+
+    /** SQL condition: the report `s` repeats one made of the same Warden shortly before (see the class doc). */
+    public static function duplicateSql(): string
+    {
+        return \sprintf('EXISTS (
                    SELECT 1 FROM warden_spawns e
                    WHERE e.monster_id = s.monster_id
                      AND e.server_name = s.server_name
                      AND e.id <> s.id
-                     AND e.created_at > s.created_at - make_interval(mins => CAST(:dup AS int))
+                     AND e.created_at > s.created_at - make_interval(mins => %d)
                      AND (e.created_at < s.created_at OR (e.created_at = s.created_at AND e.id < s.id))
-               )
-             $tail",
-            $params,
-            $types,
+               )', WardenSpawn::MAX_TTL_MINUTES);
+    }
+
+    /**
+     * One player's reports of [$from, $until), newest first, each with its points and why:
+     * `counted` (confirmed), `duplicate` (the same Warden was reported shortly before),
+     * `waiting` (still up, not confirmed yet) or `unconfirmed` (ran out unconfirmed).
+     *
+     * @return list<array{id: string, monster: string, image_url: ?string, server_name: string, city: ?string, location: string, created_at: string, outcome: string, points: int}>
+     */
+    public function explain(int $userId, \DateTimeImmutable $from, \DateTimeImmutable $until, \DateTimeImmutable $now, int $limit): array
+    {
+        $utc = new \DateTimeZone('UTC');
+        $rows = $this->db->fetchAllAssociative(
+            'SELECT s.id, m.name AS monster, m.image_url, m.charm_points, s.server_name, s.city, s.location_description, s.created_at,
+                    '.self::confirmedSql().' AS confirmed,
+                    '.self::duplicateSql()." AS duplicate,
+                    (s.status = 'ACTIVE' AND s.expires_at > :now) AS active
+             FROM warden_spawns s
+             JOIN users u ON u.id = s.reported_by_user_id
+             JOIN monsters m ON m.id = s.monster_id
+             WHERE s.reported_by_user_id = :user AND s.created_at >= :from AND s.created_at < :until
+             ORDER BY s.created_at DESC, s.id DESC
+             LIMIT ".$limit,
+            [
+                'user' => $userId,
+                'from' => $from->setTimezone($utc)->format('Y-m-d H:i:s'),
+                'until' => $until->setTimezone($utc)->format('Y-m-d H:i:s'),
+                'now' => $now->setTimezone($utc)->format('Y-m-d H:i:s'),
+            ],
         );
 
+        return array_map(static function (array $r) use ($utc): array {
+            $outcome = match (true) {
+                (bool) $r['duplicate'] => 'duplicate',
+                (bool) $r['confirmed'] => 'counted',
+                (bool) $r['active'] => 'waiting',
+                default => 'unconfirmed',
+            };
+
+            return [
+                'id' => (string) $r['id'],
+                'monster' => (string) $r['monster'],
+                'image_url' => $r['image_url'],
+                'server_name' => (string) $r['server_name'],
+                'city' => $r['city'],
+                'location' => (string) $r['location_description'],
+                'created_at' => \App\Http\Json::date(new \DateTimeImmutable((string) $r['created_at'], $utc)),
+                'outcome' => $outcome,
+                'points' => 'counted' === $outcome ? self::pointsFor((int) $r['charm_points']) : 0,
+            ];
+        }, $rows);
     }
 
     /**
